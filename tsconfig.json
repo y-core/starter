@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "types": [],
+    "jsx": "react-jsx",
+    "jsxImportSource": "@y-core/forge",
+    // the paths is simply a editor workaround for host editing
+    "paths": {
+      "@y-core/forge/*": [
+        "../forge/src/*/mod.ts", // docker
+        "../../y-core/forge/src/*/mod.ts" // host
+      ]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "tests/**/*.ts",
+    ".types/**/*.d.ts"
+  ]
+}

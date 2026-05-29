@@ -1,0 +1,82 @@
+import { Config, env } from "@y-core/forge/config";
+import type { CsrfConfig, TurnstileConfig } from "@y-core/forge/form";
+import { CsrfConfigSchema } from "@y-core/forge/form";
+import type { BaseUrlConfig, SecurityHeadersOptions } from "@y-core/forge/security";
+import { BaseUrlConfigSchema, NONCE } from "@y-core/forge/security";
+import { v } from "@y-core/forge/validation";
+
+export interface AppConfig {
+  site: {
+    url: BaseUrlConfig;
+    debug: boolean;
+  };
+  security: {
+    csrf: CsrfConfig;
+  };
+  services: {
+    email: EmailConfig;
+    turnstile: TurnstileConfig;
+  };
+}
+
+export interface EmailConfig {
+  apiKey: string;
+  apiUrl: string;
+  from: string;
+  senderName: string;
+  to: string;
+}
+
+const TURNSTILE_CSP = "https://challenges.cloudflare.com";
+
+export const securityHeaders: SecurityHeadersOptions = {
+  scriptSrc: ["'self'", NONCE, TURNSTILE_CSP],
+  connectSrc: ["'self'", TURNSTILE_CSP],
+  frameSrc: ["'self'", TURNSTILE_CSP],
+};
+
+export const AppConfigSchema = v.object({
+  site: v.object({
+    url: BaseUrlConfigSchema,
+    debug: v.pipe(
+      v.unknown(),
+      v.transform((level): boolean => level === "DEBUG"),
+    ),
+  }),
+  security: v.object({
+    csrf: CsrfConfigSchema,
+  }),
+  services: v.object({
+    email: v.object({
+      apiKey: v.string(),
+      apiUrl: v.string(),
+      from: v.string(),
+      senderName: v.string(),
+      to: v.string(),
+    }),
+    turnstile: v.object({
+      secretKey: v.string(),
+      siteKey: v.string(),
+    }),
+  }),
+});
+
+export const appConfig = {
+  site: { url: env("BASE_URL"), debug: env("LOG_LEVEL") },
+  security: { csrf: { secret: env("CSRF_SECRET") } },
+  services: {
+    email: {
+      apiKey: env("EMAIL_API_KEY"),
+      apiUrl: "https://api.mailchannels.net/tx/v1/send",
+      from: env("EMAIL_FROM"),
+      senderName: "Atlas Studio",
+      to: env("EMAIL_TO"),
+    },
+    turnstile: {
+      secretKey: env("TURNSTILE_SECRET_KEY"),
+      siteKey: env("TURNSTILE_SITE_KEY"),
+    },
+  },
+};
+
+export const configStore = new Config(appConfig, AppConfigSchema);

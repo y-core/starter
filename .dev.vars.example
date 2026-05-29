@@ -1,0 +1,25 @@
+# Copy this file to .dev.vars and fill in real values for local development.
+# Never commit .dev.vars — it contains secrets.
+
+# Set to DEBUG locally to show error details in 500 responses.
+# Omit or leave unset in production.
+LOG_LEVEL=DEBUG
+
+# MailChannels email delivery — obtain from your MailChannels account.
+EMAIL_API_KEY=your-mailchannels-api-key
+EMAIL_FROM=hello@example.com
+EMAIL_TO=you@example.com
+
+# Cloudflare Turnstile — create a site at dash.cloudflare.com/turnstile.
+# Use the "Always passes" test key pair during development:
+#   site key:   1x00000000000000000000AA
+#   secret key: 1x0000000000000000000000000000000AA
+TURNSTILE_SECRET_KEY=your-turnstile-secret-key
+TURNSTILE_SITE_KEY=your-turnstile-site-key
+
+# Public base URL — used for canonical, og:url, and JSON-LD.
+BASE_URL=https://example.com
+
+# CSRF protection — 64 hex chars (32 random bytes). Generate with:
+#   openssl rand -hex 32
+CSRF_SECRET=your-64-char-hex-csrf-secret

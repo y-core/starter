@@ -1,0 +1,640 @@
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import type { AppConfig } from "../src/config/app";
+import type { AppContext } from "../src/context";
+import { handleContactAction } from "../src/handlers/contact";
+import { makeCsrfToken } from "../src/lib/csrf";
+import app from "../src/worker";
+import devApp from "../src/worker.dev";
+
+const BASE_URL = "https://example.com";
+
+const BASE_TEST_CONFIG: AppConfig = {
+  site: {
+    url: {
+      origin: BASE_URL,
+      hostname: "example.com",
+      protocol: "https:",
+      allowedOrigins: [BASE_URL, "https://www.example.com"],
+    },
+    debug: false,
+  },
+  security: {
+    csrf: { secret: "de7bf4aef360e3a4c3254c9cec7e45d0f1fd98cc2219c62b5b07e826ba1bcc6e" },
+  },
+  services: {
+    email: {
+      apiKey: "test-api-key",
+      apiUrl: "https://api.mailchannels.net/tx/v1/send",
+      from: "from@example.com",
+      senderName: "Atlas Studio",
+      to: "to@example.com",
+    },
+    turnstile: { secretKey: "test-ts-key", siteKey: "test-site-key" },
+  },
+};
+
+function makeContext(request: Request): [AppContext, AppConfig] {
+  const c = { req: { raw: request }, env: {} } as unknown as AppContext;
+  return [c, BASE_TEST_CONFIG];
+}
+
+const VALID_FORM = new URLSearchParams({
+  name: "Jane Example",
+  email: "jane@example.com",
+  phone: "+1 555 012 3456",
+  message: "I would like help building a digital product.",
+});
+
+// Used for tests that need to pass Turnstile verification
+const VALID_FORM_WITH_TOKEN = new URLSearchParams(VALID_FORM);
+VALID_FORM_WITH_TOKEN.set("cf-turnstile-response", "test-token");
+
+const HTMX_HEADERS = {
+  "content-type": "application/x-www-form-urlencoded",
+  "HX-Request": "true",
+};
+
+const EMAIL_API_URL = "https://api.mailchannels.net/tx/v1/send";
+const TURNSTILE_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+
+const EXPECTED_SUCCESS_HTML =
+  '<div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" data-success><p>Thanks. We&#39;ll review your note and get back to you soon.</p></div>';
+const EXPECTED_EMAIL_ERROR_HTML =
+  '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Something went wrong. Please try again or contact us directly.</p></div>';
+
+const MOCK_ASSETS = { fetch: async () => new Response("", { status: 200 }) };
+
+const TEST_CSRF_SECRET = "de7bf4aef360e3a4c3254c9cec7e45d0f1fd98cc2219c62b5b07e826ba1bcc6e";
+
+const MINIMUM_ENV = {
+  ASSETS: MOCK_ASSETS,
+  BASE_URL,
+  CSRF_SECRET: TEST_CSRF_SECRET,
+  EMAIL_API_KEY: "test-api-key",
+  EMAIL_FROM: "from@example.com",
+  EMAIL_TO: "to@example.com",
+  TURNSTILE_SECRET_KEY: "test-ts-key",
+  TURNSTILE_SITE_KEY: "test-site-key",
+};
+
+let _savedFetch: typeof globalThis.fetch;
+let _csrfToken = "";
+
+beforeAll(async () => {
+  _savedFetch = globalThis.fetch;
+  globalThis.fetch = async (url, ...args) => {
+    if (url.toString() === EMAIL_API_URL) {
+      return new Response(null, { status: 202 });
+    }
+    if (url.toString() === TURNSTILE_URL) {
+      return new Response(JSON.stringify({ success: true }));
+    }
+    return _savedFetch(url, ...args);
+  };
+  _csrfToken = await makeCsrfToken(TEST_CSRF_SECRET, "/api/contact");
+});
+
+afterAll(() => {
+  globalThis.fetch = _savedFetch;
+});
+
+function postHeaders(): Record<string, string> {
+  return { ...HTMX_HEADERS, "X-CSRF-Token": _csrfToken, Origin: BASE_URL };
+}
+
+describe("GET /api/health", () => {
+  it("returns healthy", async () => {
+    const response = await app.request("/api/health", {}, MINIMUM_ENV);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      checks: { csrf: true },
+    });
+  });
+
+  it("includes required security headers", async () => {
+    const response = await app.request("/api/health", {}, MINIMUM_ENV);
+
+    expect(response.headers.get("content-security-policy")).not.toBeNull();
+    expect(response.headers.get("strict-transport-security")).toBe(
+      "max-age=63072000; includeSubDomains; preload",
+    );
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get("referrer-policy")).toBe("strict-origin-when-cross-origin");
+  });
+
+  it("includes a nonce in the CSP header", async () => {
+    const response = await app.request("/api/health", {}, MINIMUM_ENV);
+    const csp = response.headers.get("content-security-policy") || "";
+
+    expect(csp).toContain("'nonce-");
+  });
+
+  it("omits the Wrangler live-reload hash from script-src outside dev", async () => {
+    const response = await app.request("/api/health", {}, MINIMUM_ENV);
+    const csp = response.headers.get("content-security-policy") || "";
+
+    expect(csp).not.toContain("sha256-g5a3SrOYIecCloZ8S7M4xdT1pbYi6e7mjHrmwphRxfE=");
+  });
+
+  it("includes the Wrangler live-reload hash in script-src in dev", async () => {
+    const response = await devApp.request("/api/health", {}, MINIMUM_ENV);
+    const csp = response.headers.get("content-security-policy") || "";
+
+    expect(csp).toContain("sha256-g5a3SrOYIecCloZ8S7M4xdT1pbYi6e7mjHrmwphRxfE=");
+  });
+
+  it("returns Cache-Control: no-store", async () => {
+    const response = await app.request("/api/health", {}, MINIMUM_ENV);
+
+    expect(response.headers.get("cache-control")).toBe("no-store");
+  });
+});
+
+describe("POST /api/contact", () => {
+  it("returns the success fragment for a valid form", async () => {
+    const response = await app.request("/api/contact", {
+      method: "POST",
+      headers: postHeaders(),
+      body: VALID_FORM_WITH_TOKEN.toString(),
+    }, MINIMUM_ENV);
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(EXPECTED_SUCCESS_HTML);
+  });
+
+  it("returns the validation fragment for an invalid form", async () => {
+    const body = new URLSearchParams({
+      name: "",
+      email: "not-an-email",
+      phone: "",
+      message: "Too short",
+      "cf-turnstile-response": "test-token",
+    });
+
+    const response = await app.request("/api/contact", {
+      method: "POST",
+      headers: postHeaders(),
+      body: body.toString(),
+    }, MINIMUM_ENV);
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(
+      '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>Name is required.</li><li>A valid email address is required.</li><li>Message must be at least 15 characters.</li></ul></div>',
+    );
+  });
+
+  it("includes required security headers", async () => {
+    const response = await app.request("/api/contact", {
+      method: "POST",
+      headers: postHeaders(),
+      body: VALID_FORM.toString(),
+    }, MINIMUM_ENV);
+
+    expect(response.headers.get("content-security-policy")).not.toBeNull();
+    expect(response.headers.get("strict-transport-security")).toBe(
+      "max-age=63072000; includeSubDomains; preload",
+    );
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+});
+
+describe("POST /api/contact — CSRF protection", () => {
+  it("returns 403 when HX-Request header is absent", async () => {
+    const response = await app.request("/api/contact", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", Origin: BASE_URL },
+      body: VALID_FORM.toString(),
+    }, MINIMUM_ENV);
+
+    expect(response.status).toBe(403);
+    expect(await response.text()).toBe("Forbidden");
+  });
+
+  it("returns 403 when HX-Request header is not 'true'", async () => {
+    const response = await app.request("/api/contact", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", "HX-Request": "false", Origin: BASE_URL },
+      body: VALID_FORM.toString(),
+    }, MINIMUM_ENV);
+
+    expect(response.status).toBe(403);
+  });
+});
+
+describe("POST /api/contact — malformed requests", () => {
+  it("returns 415 for application/json body", async () => {
+    const response = await app.request("/api/contact", {
+      method: "POST",
+      headers: { "content-type": "application/json", "HX-Request": "true", Origin: BASE_URL },
+      body: JSON.stringify({ name: "Jane", email: "jane@example.com", message: "Hello there." }),
+    }, MINIMUM_ENV);
+
+    expect(response.status).toBe(415);
+    expect(await response.text()).toBe("Unsupported Media Type");
+  });
+
+  it("returns 415 for a request with no body", async () => {
+    const response = await app.request("/api/contact", {
+      method: "POST",
+      headers: { "HX-Request": "true", Origin: BASE_URL },
+    }, MINIMUM_ENV);
+
+    expect(response.status).toBe(415);
+  });
+});
+
+describe("POST /api/contact — boundary values", () => {
+  it("accepts a message of exactly 15 characters (minimum)", async () => {
+    const body = new URLSearchParams({
+      name: "Jane Example",
+      email: "jane@example.com",
+      phone: "",
+      message: "123456789012345",
+      "cf-turnstile-response": "test-token",
+    });
+
+    const response = await app.request("/api/contact", {
+      method: "POST",
+      headers: postHeaders(),
+      body: body.toString(),
+    }, MINIMUM_ENV);
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(EXPECTED_SUCCESS_HTML);
+  });
+
+  it("rejects a message of 14 characters (below minimum)", async () => {
+    const body = new URLSearchParams({
+      name: "Jane Example",
+      email: "jane@example.com",
+      phone: "",
+      message: "12345678901234",
+      "cf-turnstile-response": "test-token",
+    });
+
+    const response = await app.request("/api/contact", {
+      method: "POST",
+      headers: postHeaders(),
+      body: body.toString(),
+    }, MINIMUM_ENV);
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(
+      '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>Message must be at least 15 characters.</li></ul></div>',
+    );
+  });
+
+  it("accepts a name of exactly 100 characters (maximum)", async () => {
+    const body = new URLSearchParams({
+      name: "J".repeat(100),
+      email: "jane@example.com",
+      phone: "",
+      message: "Valid message content for a digital product project.",
+      "cf-turnstile-response": "test-token",
+    });
+
+    const response = await app.request("/api/contact", {
+      method: "POST",
+      headers: postHeaders(),
+      body: body.toString(),
+    }, MINIMUM_ENV);
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(EXPECTED_SUCCESS_HTML);
+  });
+
+  it("rejects a name of 101 characters (above maximum)", async () => {
+    const body = new URLSearchParams({
+      name: "J".repeat(101),
+      email: "jane@example.com",
+      phone: "",
+      message: "Valid message content for a digital product project.",
+      "cf-turnstile-response": "test-token",
+    });
+
+    const response = await app.request("/api/contact", {
+      method: "POST",
+      headers: postHeaders(),
+      body: body.toString(),
+    }, MINIMUM_ENV);
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(
+      '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>Name must be 100 characters or fewer.</li></ul></div>',
+    );
+  });
+
+  it("succeeds without an optional phone number", async () => {
+    const body = new URLSearchParams({
+      name: "Jane Example",
+      email: "jane@example.com",
+      phone: "",
+      message: "Valid message content for a digital product project.",
+      "cf-turnstile-response": "test-token",
+    });
+
+    const response = await app.request("/api/contact", {
+      method: "POST",
+      headers: postHeaders(),
+      body: body.toString(),
+    }, MINIMUM_ENV);
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(EXPECTED_SUCCESS_HTML);
+  });
+});
+
+describe("POST /api/contact — XSS payloads", () => {
+  it("does not reflect XSS input from the name field in the response", async () => {
+    const xssName = "<script>alert(1)</script>";
+    const body = new URLSearchParams({
+      name: xssName,
+      email: "jane@example.com",
+      phone: "",
+      message: "Valid message content for a digital product project.",
+      "cf-turnstile-response": "test-token",
+    });
+
+    const response = await app.request("/api/contact", {
+      method: "POST",
+      headers: postHeaders(),
+      body: body.toString(),
+    }, MINIMUM_ENV);
+
+    const text = await response.text();
+    expect(text).not.toContain(xssName);
+    expect(text).not.toContain("<script>");
+  });
+
+  it("does not reflect XSS input in validation error messages", async () => {
+    const xssPayload = '"><script>alert(1)</script>';
+    const body = new URLSearchParams({
+      name: "",
+      email: xssPayload,
+      phone: "",
+      message: "short",
+      "cf-turnstile-response": "test-token",
+    });
+
+    const response = await app.request("/api/contact", {
+      method: "POST",
+      headers: postHeaders(),
+      body: body.toString(),
+    }, MINIMUM_ENV);
+
+    const text = await response.text();
+    expect(text).not.toContain("<script>");
+    expect(text).not.toContain(xssPayload);
+  });
+});
+
+describe("POST /api/contact — Turnstile verification", () => {
+  const makeRequest = (body: URLSearchParams) =>
+    new Request("https://example.com/api/contact", {
+      method: "POST",
+      headers: HTMX_HEADERS,
+      body: body.toString(),
+    });
+
+  it("returns 403 when cf-turnstile-response token is missing", async () => {
+    const [c, config] = makeContext(makeRequest(VALID_FORM));
+    const response = await handleContactAction(c, config);
+
+    expect(response.status).toBe(403);
+    expect(await response.text()).toBe(
+      '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Please complete the security challenge.</p></div>',
+    );
+  });
+
+  it("returns 403 when Turnstile verification fails", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response(JSON.stringify({ success: false }));
+
+    const body = new URLSearchParams(VALID_FORM);
+    body.set("cf-turnstile-response", "bad-token");
+
+    try {
+      const [c, config] = makeContext(makeRequest(body));
+      const response = await handleContactAction(c, config);
+
+      expect(response.status).toBe(403);
+      expect(await response.text()).toBe(
+        '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Security verification failed. Please try again.</p></div>',
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("proceeds to success when Turnstile verification passes", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (url.toString().includes("challenges.cloudflare.com")) {
+        return new Response(JSON.stringify({ success: true }));
+      }
+      return new Response(null, { status: 202 });
+    };
+
+    const body = new URLSearchParams(VALID_FORM);
+    body.set("cf-turnstile-response", "valid-token");
+
+    try {
+      const [c, config] = makeContext(makeRequest(body));
+      const response = await handleContactAction(c, config);
+
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe(EXPECTED_SUCCESS_HTML);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+describe("POST /api/contact — rate limiting", () => {
+  it("returns 429 when rate limit is exceeded", async () => {
+    const response = await app.request("/api/contact", {
+      method: "POST",
+      headers: { ...postHeaders(), "CF-Connecting-IP": "1.2.3.4" },
+      body: VALID_FORM_WITH_TOKEN.toString(),
+    }, { ...MINIMUM_ENV, RATE_LIMITER: { limit: async () => ({ success: false }) } });
+
+    expect(response.status).toBe(429);
+    expect(await response.text()).toBe("Too many requests. Please try again later.");
+  });
+
+  it("proceeds to success when rate limit passes", async () => {
+    const response = await app.request("/api/contact", {
+      method: "POST",
+      headers: { ...postHeaders(), "CF-Connecting-IP": "1.2.3.4" },
+      body: VALID_FORM_WITH_TOKEN.toString(),
+    }, { ...MINIMUM_ENV, RATE_LIMITER: { limit: async () => ({ success: true }) } });
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(EXPECTED_SUCCESS_HTML);
+  });
+
+  it("keys the rate limit by CF-Connecting-IP", async () => {
+    let capturedKey: string | undefined;
+    await app.request("/api/contact", {
+      method: "POST",
+      headers: { ...postHeaders(), "CF-Connecting-IP": "5.6.7.8" },
+      body: VALID_FORM_WITH_TOKEN.toString(),
+    }, {
+      ...MINIMUM_ENV,
+      RATE_LIMITER: {
+        limit: async ({ key }: { key: string }) => {
+          capturedKey = key;
+          return { success: true };
+        },
+      },
+    });
+
+    expect(capturedKey).toBe("5.6.7.8");
+  });
+
+  it("falls back to 'unknown' key when CF-Connecting-IP header is absent", async () => {
+    let capturedKey: string | undefined;
+    await app.request("/api/contact", {
+      method: "POST",
+      headers: postHeaders(),
+      body: VALID_FORM_WITH_TOKEN.toString(),
+    }, {
+      ...MINIMUM_ENV,
+      RATE_LIMITER: {
+        limit: async ({ key }: { key: string }) => {
+          capturedKey = key;
+          return { success: true };
+        },
+      },
+    });
+
+    expect(capturedKey).toBe("unknown");
+  });
+
+  it("skips rate limiting when RATE_LIMITER binding is absent", async () => {
+    const response = await app.request("/api/contact", {
+      method: "POST",
+      headers: { ...postHeaders(), "CF-Connecting-IP": "1.2.3.4" },
+      body: VALID_FORM_WITH_TOKEN.toString(),
+    }, MINIMUM_ENV);
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(EXPECTED_SUCCESS_HTML);
+  });
+});
+
+describe("POST /api/contact — honeypot", () => {
+  it("returns 400 when the surname honeypot field is filled", async () => {
+    const body = new URLSearchParams(VALID_FORM);
+    body.set("surname", "Bot");
+
+    const response = await app.request("/api/contact", {
+      method: "POST",
+      headers: postHeaders(),
+      body: body.toString(),
+    }, MINIMUM_ENV);
+
+    expect(response.status).toBe(400);
+    expect(await response.text()).toBe(
+      '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Unable to process the form data. Please try again.</p></div>',
+    );
+  });
+
+  it("proceeds when the surname field is empty", async () => {
+    const body = new URLSearchParams(VALID_FORM_WITH_TOKEN);
+    body.set("surname", "");
+
+    const response = await app.request("/api/contact", {
+      method: "POST",
+      headers: postHeaders(),
+      body: body.toString(),
+    }, MINIMUM_ENV);
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(EXPECTED_SUCCESS_HTML);
+  });
+
+  it("proceeds when the surname field is absent", async () => {
+    const response = await app.request("/api/contact", {
+      method: "POST",
+      headers: postHeaders(),
+      body: VALID_FORM_WITH_TOKEN.toString(),
+    }, MINIMUM_ENV);
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(EXPECTED_SUCCESS_HTML);
+  });
+});
+
+describe("POST /api/contact — edge cases", () => {
+  it("accepts a name containing unicode characters", async () => {
+    const body = new URLSearchParams({
+      name: "André van der Berg",
+      email: "andre@example.com",
+      phone: "",
+      message: "I need help designing a new product interface.",
+      "cf-turnstile-response": "test-token",
+    });
+
+    const response = await app.request("/api/contact", {
+      method: "POST",
+      headers: postHeaders(),
+      body: body.toString(),
+    }, MINIMUM_ENV);
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(EXPECTED_SUCCESS_HTML);
+  });
+
+  it("rejects an invalid phone number format", async () => {
+    const body = new URLSearchParams({
+      name: "Jane Example",
+      email: "jane@example.com",
+      phone: "not-a-phone!!!",
+      message: "Valid message content for a digital product project.",
+      "cf-turnstile-response": "test-token",
+    });
+
+    const response = await app.request("/api/contact", {
+      method: "POST",
+      headers: postHeaders(),
+      body: body.toString(),
+    }, MINIMUM_ENV);
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(
+      '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>Contact number may only contain digits, spaces, dashes, and plus signs.</li></ul></div>',
+    );
+  });
+});
+
+describe("POST /api/contact — email delivery failure", () => {
+  const makeRequest = (body: URLSearchParams) =>
+    new Request("https://example.com/api/contact", {
+      method: "POST",
+      headers: HTMX_HEADERS,
+      body: body.toString(),
+    });
+
+  it("returns 500 when email API returns an error", async () => {
+    const savedFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (url.toString() === EMAIL_API_URL) {
+        return new Response("Service Unavailable", { status: 503 });
+      }
+      return savedFetch(url);
+    };
+
+    try {
+      const [c, config] = makeContext(makeRequest(VALID_FORM_WITH_TOKEN));
+      const response = await handleContactAction(c, config);
+
+      expect(response.status).toBe(500);
+      expect(await response.text()).toBe(EXPECTED_EMAIL_ERROR_HTML);
+    } finally {
+      globalThis.fetch = savedFetch;
+    }
+  });
+});
