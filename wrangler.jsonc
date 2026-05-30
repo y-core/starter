@@ -8,19 +8,11 @@
     "port": 8787,
     "local_protocol": "http"
   },
-  "vars": {
-    "BASE_URL": "https://example.com",
-    "EMAIL_FROM": "hello@example.com",
-    "EMAIL_TO": "hello@example.com"
-  },
   "assets": {
     "binding": "ASSETS",
     "directory": "./public",
     "run_worker_first": true,
     "not_found_handling": "none"
-  },
-  "build": {
-    "command": "bun run build:assets"
   },
   "ratelimits": [
     {

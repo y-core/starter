@@ -13,15 +13,11 @@ import type { AppEnv } from "./context";
 import { notFoundView } from "./handlers/pages";
 import { routes } from "./routes";
 
-/** Builds the Hono app with a fixed CSP. The caller decides the policy: prod
- *  passes the base `securityHeaders`; the dev entry layers the Wrangler
- *  live-reload hash on top. Keeping the policy a parameter means prod never
- *  references the dev allowance — it cannot leak across entries by construction. */
+/* Builds the Hono app with a fixed CSP. The caller decides the policy:
+ * Production passes the base `securityHeaders`;
+ */
 export function createWorker(security: SecurityHeadersOptions) {
-  const app = createApp<AppEnv>({
-    config: configStore,
-    isDebug: (c) => c.env.LOG_LEVEL === "DEBUG",
-  });
+  const app = createApp<AppEnv>({ config: configStore, isDebug: (c) => configStore.get(c.env).site.debug });
   app.use("*", makeSecurityHeaders(security));
   applyRoutes(app, routes);
   app.all("*", serveAssets(app, { notFoundView }));

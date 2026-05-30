@@ -7,14 +7,7 @@ import { homeRoute } from "./handlers/pages";
 import { contactSecurity, csrfVerify, rateLimitGuard } from "./lib/middleware";
 
 export const routes: RouteConfig<AppEnv> = [
-  route("/api/health", {
-    loader: healthCheck<AppEnv>({
-      csrf: () => true,
-    }),
-  }),
-  route("/api/contact", {
-    middleware: [contactSecurity, rateLimitGuard, csrfVerify],
-    action: handleContactAction,
-  }),
-  route("/", homeRoute),
+  route("/api/health", { loader: healthCheck<AppEnv>({ csrf: () => true }) }),
+  route("/api/contact", { middleware: [contactSecurity, rateLimitGuard, csrfVerify], action: handleContactAction }),
+  route("/", { ...homeRoute, middleware: csrfVerify }),
 ];

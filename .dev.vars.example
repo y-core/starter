@@ -1,25 +1,24 @@
-# Copy this file to .dev.vars and fill in real values for local development.
-# Never commit .dev.vars — it contains secrets.
+# Copy to .dev.vars; wrangler dev merges wrangler.jsonc vars + (.dev.vars wins).
+################################################################################
+# DEV CONFIG OVERRIDES - Never commit; it contains secrets
+################################################################################
+BASE_URL=http://localhost:8787
 
-# Set to DEBUG locally to show error details in 500 responses.
-# Omit or leave unset in production.
+# Set to DEBUG to show error details in 500 responses. Omit in prod — defaults to off.
 LOG_LEVEL=DEBUG
 
-# MailChannels email delivery — obtain from your MailChannels account.
-EMAIL_API_KEY=your-mailchannels-api-key
-EMAIL_FROM=hello@example.com
-EMAIL_TO=you@example.com
+# EMAIL_FROM and EMAIL_TO can be defined here to override defaults from src/config/app.ts
+
+################################################################################
+# SECRETS - Never place secrets in wrangler.jsonc.
+# Production: Cloudflare dashboard (Settings → Variables and Secrets, encrypted).
+################################################################################
+# CSRF protection — generate with: openssl rand -hex 32
+CSRF_SECRET=your-64-char-hex-csrf-secret
+
+EMAIL_API_KEY=dev-placeholder-api-key
 
 # Cloudflare Turnstile — create a site at dash.cloudflare.com/turnstile.
-# Use the "Always passes" test key pair during development:
-#   site key:   1x00000000000000000000AA
-#   secret key: 1x0000000000000000000000000000000AA
-TURNSTILE_SECRET_KEY=your-turnstile-secret-key
-TURNSTILE_SITE_KEY=your-turnstile-site-key
-
-# Public base URL — used for canonical, og:url, and JSON-LD.
-BASE_URL=https://example.com
-
-# CSRF protection — 64 hex chars (32 random bytes). Generate with:
-#   openssl rand -hex 32
-CSRF_SECRET=your-64-char-hex-csrf-secret
+# "Always passes" test site key — overrides prod key for local dev:
+TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
+TURNSTILE_SITE_KEY=1x00000000000000000000AA

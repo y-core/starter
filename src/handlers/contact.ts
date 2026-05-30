@@ -31,9 +31,7 @@ export async function handleContactAction(c: AppContext, config: AppConfig): Pro
   );
   if (!turnstileResult.ok) {
     const message =
-      turnstileResult.reason === "missing-token"
-        ? "Please complete the security challenge."
-        : "Security verification failed. Please try again.";
+      turnstileResult.reason === "missing-token" ? "Please complete the security challenge." : "Security verification failed. Please try again.";
     return htmlResponse(renderError(message), 403);
   }
 

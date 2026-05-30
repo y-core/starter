@@ -7,10 +7,7 @@ export type EmailResult = { ok: true } | { ok: false; reason: string };
 
 const logger = createLogger("email");
 
-export async function sendContactEmail(
-  submission: ContactSubmission,
-  email: EmailConfig,
-): Promise<EmailResult> {
+export async function sendContactEmail(submission: ContactSubmission, email: EmailConfig): Promise<EmailResult> {
   const { apiKey, apiUrl, from, senderName, to } = email;
 
   const html =
@@ -22,11 +19,9 @@ export async function sendContactEmail(
   let res: Response;
   try {
     res = await fetch(apiUrl, {
+      signal: AbortSignal.timeout(10_000),
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-      },
+      headers: { "content-type": "application/json", "x-api-key": apiKey },
       body: JSON.stringify({
         from: { email: from, name: senderName },
         reply_to: { email: submission.email, name: submission.name },

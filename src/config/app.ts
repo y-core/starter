@@ -6,17 +6,9 @@ import { BaseUrlConfigSchema, NONCE } from "@y-core/forge/security";
 import { v } from "@y-core/forge/validation";
 
 export interface AppConfig {
-  site: {
-    url: BaseUrlConfig;
-    debug: boolean;
-  };
-  security: {
-    csrf: CsrfConfig;
-  };
-  services: {
-    email: EmailConfig;
-    turnstile: TurnstileConfig;
-  };
+  site: { url: BaseUrlConfig; debug: boolean };
+  security: { csrf: CsrfConfig };
+  services: { email: EmailConfig; turnstile: TurnstileConfig };
 }
 
 export interface EmailConfig {
@@ -27,37 +19,37 @@ export interface EmailConfig {
   to: string;
 }
 
-const TURNSTILE_CSP = "https://challenges.cloudflare.com";
+const CONFIG = {
+  TURNSTILE_CSP: "https://challenges.cloudflare.com",
+  BASE_URL: "https://yourdomain.com",
+  EMAIL_FROM: "hello@yourdomain.com",
+  EMAIL_TO: "hello@yourdomain.com",
+};
 
 export const securityHeaders: SecurityHeadersOptions = {
-  scriptSrc: ["'self'", NONCE, TURNSTILE_CSP],
-  connectSrc: ["'self'", TURNSTILE_CSP],
-  frameSrc: ["'self'", TURNSTILE_CSP],
+  scriptSrc: ["'self'", NONCE, CONFIG.TURNSTILE_CSP],
+  connectSrc: ["'self'", CONFIG.TURNSTILE_CSP],
+  frameSrc: ["'self'", CONFIG.TURNSTILE_CSP],
 };
 
 export const AppConfigSchema = v.object({
   site: v.object({
-    url: BaseUrlConfigSchema,
+    url: v.optional(BaseUrlConfigSchema, CONFIG.BASE_URL),
     debug: v.pipe(
       v.unknown(),
       v.transform((level): boolean => level === "DEBUG"),
     ),
   }),
-  security: v.object({
-    csrf: CsrfConfigSchema,
-  }),
+  security: v.object({ csrf: CsrfConfigSchema }),
   services: v.object({
     email: v.object({
       apiKey: v.string(),
       apiUrl: v.string(),
-      from: v.string(),
+      from: v.optional(v.string(), CONFIG.EMAIL_FROM),
       senderName: v.string(),
-      to: v.string(),
+      to: v.optional(v.string(), CONFIG.EMAIL_TO),
     }),
-    turnstile: v.object({
-      secretKey: v.string(),
-      siteKey: v.string(),
-    }),
+    turnstile: v.object({ secretKey: v.string(), siteKey: v.string() }),
   }),
 });
 
@@ -69,13 +61,10 @@ export const appConfig = {
       apiKey: env("EMAIL_API_KEY"),
       apiUrl: "https://api.mailchannels.net/tx/v1/send",
       from: env("EMAIL_FROM"),
-      senderName: "Atlas Studio",
+      senderName: "Forge Studio",
       to: env("EMAIL_TO"),
     },
-    turnstile: {
-      secretKey: env("TURNSTILE_SECRET_KEY"),
-      siteKey: env("TURNSTILE_SITE_KEY"),
-    },
+    turnstile: { secretKey: env("TURNSTILE_SECRET_KEY"), siteKey: env("TURNSTILE_SITE_KEY") },
   },
 };
 

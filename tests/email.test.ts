@@ -25,7 +25,7 @@ let capturedMethod: string | null = null;
 let capturedHeaders: Record<string, string> | null = null;
 interface CapturedBody {
   from: { email: string; name?: string };
-  reply_to: { email: string };
+  reply_to: { email: string; name?: string };
   personalizations: Array<{ to: Array<{ email: string }> }>;
   subject: string;
   content: Array<{ type: string; value: string }>;
@@ -79,20 +79,22 @@ describe("sendContactEmail — HTML body", () => {
   });
 
   it("escapes HTML entities in user-provided name", async () => {
-    await sendContactEmail(
-      { ...VALID_SUBMISSION, name: "<script>alert(1)</script>" },
-      BASE_EMAIL,
-    );
+    const xssName = "<script>alert(1)</script>";
+    await sendContactEmail({ ...VALID_SUBMISSION, name: xssName }, BASE_EMAIL);
     const body: string = capturedBody!.content[0].value;
     expect(body).not.toContain("<script>");
-    expect(body).toContain("&lt;script&gt;");
+    expect(body).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+  });
+
+  it("escapes HTML entities in user-provided phone", async () => {
+    await sendContactEmail({ ...VALID_SUBMISSION, phone: "<img onerror=alert(1)>" }, BASE_EMAIL);
+    const body: string = capturedBody!.content[0].value;
+    expect(body).not.toContain("<img");
+    expect(body).toContain("&lt;img onerror=alert(1)&gt;");
   });
 
   it("converts newlines to <br> in the message", async () => {
-    await sendContactEmail(
-      { ...VALID_SUBMISSION, message: "line one\nline two" },
-      BASE_EMAIL,
-    );
+    await sendContactEmail({ ...VALID_SUBMISSION, message: "line one\nline two" }, BASE_EMAIL);
     const body: string = capturedBody!.content[0].value;
     expect(body).toContain("<br>");
     expect(body).not.toContain("\nline two");
@@ -127,9 +129,14 @@ describe("sendContactEmail — API payload", () => {
     expect(capturedBody!.reply_to.email).toBe("jane@example.com");
   });
 
-  it("sets subject to include submission.name", async () => {
+  it("sets subject to the exact expected string", async () => {
     await sendContactEmail(VALID_SUBMISSION, BASE_EMAIL);
-    expect(capturedBody!.subject).toContain("Jane Example");
+    expect(capturedBody!.subject).toBe("Enquiry from Jane Example");
+  });
+
+  it("sets reply_to.name to submission.name", async () => {
+    await sendContactEmail(VALID_SUBMISSION, BASE_EMAIL);
+    expect(capturedBody!.reply_to.name).toBe("Jane Example");
   });
 
   it("sets personalizations[0].to[0].email to the configured email.to", async () => {
@@ -159,5 +166,34 @@ describe("sendContactEmail — response handling", () => {
     mockStatus = 400;
     const result = await sendContactEmail(VALID_SUBMISSION, BASE_EMAIL);
     expect(result.ok).toBe(false);
+  });
+
+  it("returns network-error reason when fetch throws", async () => {
+    const savedFetch = globalThis.fetch;
+    globalThis.fetch = async () => {
+      throw new Error("Network failure");
+    };
+    try {
+      const result = await sendContactEmail(VALID_SUBMISSION, BASE_EMAIL);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toBe("network-error");
+    } finally {
+      globalThis.fetch = savedFetch;
+    }
+  });
+
+  it("returns network-error reason when fetch times out (AbortError)", async () => {
+    const savedFetch = globalThis.fetch;
+    globalThis.fetch = async () => {
+      const err = new DOMException("The operation was aborted", "AbortError");
+      throw err;
+    };
+    try {
+      const result = await sendContactEmail(VALID_SUBMISSION, BASE_EMAIL);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toBe("network-error");
+    } finally {
+      globalThis.fetch = savedFetch;
+    }
   });
 });

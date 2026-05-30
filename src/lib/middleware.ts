@@ -1,8 +1,11 @@
 import { csrfProtection, importCsrfKey } from "@y-core/forge/form";
+import { createLogger } from "@y-core/forge/logging";
 import type { MiddlewareHandler } from "@y-core/forge/router";
 import { rateLimit, verifyOrigin } from "@y-core/forge/security";
 import { configStore } from "../config/app";
 import type { AppEnv } from "../context";
+
+const logger = createLogger("middleware");
 
 export const contactSecurity: MiddlewareHandler<AppEnv> = async (c, next) => {
   // POST-only route — assert the method defensively before any other checks.
@@ -15,11 +18,13 @@ export const contactSecurity: MiddlewareHandler<AppEnv> = async (c, next) => {
   return next();
 };
 
-export const rateLimitGuard = rateLimit<AppEnv>({
-  limiter: (c) => c.env.RATE_LIMITER,
-  required: false,
-});
+const _rateLimit = rateLimit<AppEnv>({ limiter: (c) => c.env.RATE_LIMITER, required: false });
 
-export const csrfVerify = csrfProtection<AppEnv>({
-  secret: async (c) => importCsrfKey(configStore.get(c.env).security.csrf.secret),
-});
+export const rateLimitGuard: MiddlewareHandler<AppEnv> = async (c, next) => {
+  if (!c.env.RATE_LIMITER) {
+    logger.warn("RATE_LIMITER binding is absent — rate limit inactive");
+  }
+  return _rateLimit(c, next);
+};
+
+export const csrfVerify = csrfProtection<AppEnv>({ secret: async (c) => importCsrfKey(configStore.get(c.env).security.csrf.secret) });

@@ -35,9 +35,10 @@
 **Key commands:**
 
 ```bash
-bun run check          # types → lint → tests (full pipeline)
-bun run dev            # build assets + watch CSS + wrangler dev (dev entry, live-reload)
-bun run lint:fix       # auto-fix lint/format issues
+bun run check         # types → lint → tests (full pipeline)
+bun run dev           # build assets + watch CSS + wrangler dev (dev entry, live-reload)
+bun run lint:fix      # auto-fix lint/format issues
+bun run test          # tests
 ```
 
 **Avoid:** `tsc` (use `tsgo`), `npm`/`pnpm`/`yarn` (use `bun`), `eslint`/`prettier` (use `biome`).
@@ -66,18 +67,6 @@ bun run lint:fix       # auto-fix lint/format issues
 
 **Shared lib:** `@y-core/forge` (GitHub: `github.com/y-core/forge`) — reusable utilities for Hono + Workers.
 
-```typescript
-// Security headers applied as middleware inside createWorker(security)
-import { makeSecurityHeaders, mergeSecurityHeaders, NONCE } from "@y-core/forge/security";
-app.use("*", makeSecurityHeaders(security));
-
-// Routing pattern
-import { applyRoutes } from "@y-core/forge/router";
-applyRoutes(app, routes);
-```
-
----
-
 ## Design System
 
 **Color palette**, defined in `src/assets/tailwind.css` via `@theme`:
@@ -90,8 +79,8 @@ applyRoutes(app, routes);
 
 ## Type System
 
-- `"types": ["@cloudflare/workers-types"]` — only Cloudflare Workers types in global scope
-- `types/bun-test/index.d.ts` — minimal `bun:test` module stub for tests
+- `"types": []` — global scope uses no `@types/*` packages; Cloudflare Workers types come via the generated `.types/cloudflare.d.ts`
+- `.types/bun-test.d.ts` — minimal `bun:test` module stub for tests
 - Do NOT install or use `bun-types` — it overrides DOM's `fetch` type with Bun-specific properties
 - `@types/bun` is NOT a dependency; the custom stub covers all test needs
 
