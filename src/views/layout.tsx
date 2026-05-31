@@ -8,7 +8,7 @@ import manifestData from "../../.forge/assets.manifest.json" with { type: "json"
 
 const assets = createManifest(manifestData as Record<string, string>, "/assets");
 
-import { useBaseUrl, useNonce } from "../lib/request-context";
+import { useBaseUrl, useNonce } from "../app/context";
 import type { SiteContent } from "../model/home.content";
 
 interface LayoutProps {

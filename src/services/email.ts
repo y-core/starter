@@ -1,13 +1,11 @@
 import { escapeHtml } from "@y-core/forge/http";
-import { createLogger } from "@y-core/forge/logging";
-import type { EmailConfig } from "../config/app";
+import type { Logger } from "@y-core/forge/logging";
+import type { EmailConfig } from "../app/config";
 import type { ContactSubmission } from "../model/contact";
 
 export type EmailResult = { ok: true } | { ok: false; reason: string };
 
-const logger = createLogger("email");
-
-export async function sendContactEmail(submission: ContactSubmission, email: EmailConfig): Promise<EmailResult> {
+export async function sendContactEmail(submission: ContactSubmission, email: EmailConfig, logger: Logger): Promise<EmailResult> {
   const { apiKey, apiUrl, from, senderName, to } = email;
 
   const html =

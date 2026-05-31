@@ -1,6 +1,6 @@
 /** @jsxImportSource @y-core/forge */
 import { Form, Icon } from "@y-core/forge/ui";
-import { useCsrfToken, useTurnstileSiteKey } from "../lib/request-context";
+import { useCsrfToken, useTurnstileSiteKey } from "../app/context";
 import type { SiteContent } from "../model/home.content";
 
 interface HomePageProps {

@@ -13,7 +13,7 @@
     "test": "bun test tests/"
   },
   "dependencies": {
-    "@y-core/forge": "github:y-core/forge#main"
+    "@y-core/forge": "github:y-core/forge#v0.0.13"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",

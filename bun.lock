@@ -4,7 +4,7 @@
     "": {
       "name": "forge-starter",
       "dependencies": {
-        "@y-core/forge": "git+https://github.com/y-core/forge.git#main",
+        "@y-core/forge": "github:y-core/forge#v0.0.13",
       },
       "devDependencies": {
         "@biomejs/biome": "^2.4.15",
@@ -259,7 +259,7 @@
 
     "@typescript/native-preview-win32-x64": ["@typescript/native-preview-win32-x64@7.0.0-dev.20260517.1", "", { "os": "win32", "cpu": "x64" }, "sha512-ekFca6XpdGIfLwqaRSm0GzYvI1COhoN+a62KeSwmaZN8EGWN/Rwrp/Tm9VjWGrdHSOLQFdEAGNibmp4bRB4HyA=="],
 
-    "@y-core/forge": ["@y-core/forge@github:y-core/forge#313d4a2", { "dependencies": { "@remix-run/cookie": "^0.5.1", "@remix-run/headers": "^0.19.0", "@remix-run/session": "^0.4.1", "hono": "^4.7.0", "htmx.org": "^2.0.10", "valibot": "^1.4.0" }, "peerDependencies": { "esbuild": ">=0.20.0", "sharp": ">=0.33.0" }, "optionalPeers": ["esbuild", "sharp"] }, "y-core-forge-313d4a2"],
+    "@y-core/forge": ["@y-core/forge@github:y-core/forge#7eec48e", { "dependencies": { "@remix-run/cookie": "^0.5.1", "@remix-run/headers": "^0.19.0", "@remix-run/session": "^0.4.1", "hono": "^4.7.0", "htmx.org": "^2.0.10", "valibot": "^1.4.0" }, "peerDependencies": { "esbuild": ">=0.20.0", "sharp": ">=0.33.0" }, "optionalPeers": ["esbuild", "sharp"] }, "y-core-forge-7eec48e"],
 
     "blake3-wasm": ["blake3-wasm@2.1.5", "", {}, "sha512-F1+K8EbfOZE49dtoPtmxUQrpXaBIl3ICvasLh+nJta0xkz+9kF/7uet9fLnwKqhDrmj6g+6K3Tw9yQPUg2ka5g=="],
 

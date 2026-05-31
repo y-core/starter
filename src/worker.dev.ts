@@ -1,5 +1,5 @@
 import { mergeSecurityHeaders } from "@y-core/forge/security";
-import { securityHeaders } from "./config/app";
+import { securityHeaders } from "./app/config";
 import { createWorker } from "./worker";
 
 /* SHA-256 hash of the inline script Wrangler injects into dev (live-reload) responses.

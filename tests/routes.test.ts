@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { createCsrfToken, importCsrfKey } from "@y-core/forge/form";
-import type { AppConfig } from "../src/config/app";
-import type { AppContext } from "../src/context";
+import type { Logger } from "@y-core/forge/logging";
+import type { AppConfig } from "../src/app/config";
+import type { AppEnv } from "../src/app/env";
 import { handleContactAction } from "../src/handlers/contact";
 import app from "../src/worker";
 import devApp from "../src/worker.dev";
@@ -26,8 +27,10 @@ const BASE_TEST_CONFIG: AppConfig = {
   },
 };
 
-function makeContext(request: Request): [AppContext, AppConfig] {
-  const c = { req: { raw: request }, env: {} } as unknown as AppContext;
+const nullLogger: Logger = { debug: () => {}, info: () => {}, warn: () => {}, error: () => {}, flush: async () => {}, child: () => nullLogger };
+
+function makeContext(request: Request): [AppEnv, AppConfig] {
+  const c = { req: { raw: request }, env: {}, get: (key: string) => (key === "logger" ? nullLogger : undefined) } as unknown as AppEnv;
   return [c, BASE_TEST_CONFIG];
 }
 

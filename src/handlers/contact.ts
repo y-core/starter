@@ -1,15 +1,14 @@
 import { isHoneypotFilled, verifyTurnstile } from "@y-core/forge/form";
 import { htmlResponse, renderError, renderSuccess, renderValidationErrors } from "@y-core/forge/http";
-import { createLogger } from "@y-core/forge/logging";
-import type { AppConfig } from "../config/app";
-import type { AppContext } from "../context";
+import type { AppConfig } from "../app/config";
+import type { AppEnv } from "../app/env";
 import { validateContact } from "../model/contact";
 import { sendContactEmail } from "../services/email";
 
-const logger = createLogger("contact");
 const SUCCESS_MESSAGE = "Thanks. We'll review your note and get back to you soon.";
 
-export async function handleContactAction(c: AppContext, config: AppConfig): Promise<Response> {
+export async function handleContactAction(c: AppEnv, config: AppConfig): Promise<Response> {
+  const log = c.get("logger");
   const request = c.req.raw;
 
   let formData: FormData;
@@ -41,12 +40,12 @@ export async function handleContactAction(c: AppContext, config: AppConfig): Pro
     return htmlResponse(renderValidationErrors(result.errors));
   }
 
-  const sent = await sendContactEmail(result.data, config.services.email);
+  const sent = await sendContactEmail(result.data, config.services.email, log);
   if (!sent.ok) {
-    logger.error("Email delivery failed", { reason: sent.reason });
+    log.error("Email delivery failed", { reason: sent.reason });
     return htmlResponse(renderError("Something went wrong. Please try again or contact us directly."), 500);
   }
 
-  logger.info("Contact form submitted");
+  log.info("Contact form submitted");
   return htmlResponse(renderSuccess(SUCCESS_MESSAGE));
 }
