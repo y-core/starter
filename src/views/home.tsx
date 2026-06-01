@@ -1,18 +1,20 @@
 /** @jsxImportSource @y-core/forge */
-import { Form, Icon } from "@y-core/forge/ui";
-import { useCsrfToken, useTurnstileSiteKey } from "../app/context";
+
+import { CoreIcon } from "@assets";
+import { Form } from "@y-core/forge/ui";
+import type { AppContext } from "../app/context";
 import type { SiteContent } from "../model/home.content";
 
 interface HomePageProps {
+  ctx: AppContext;
   content: SiteContent;
 }
 
 const INPUT_CLASSES =
   "mt-2 w-full rounded-xl border border-brand-200 bg-white px-4 py-3 text-base text-brand-900 outline-none transition placeholder:text-stone-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-200 dark:border-brand-700 dark:bg-brand-900 dark:text-brand-100 dark:placeholder:text-brand-500 dark:focus:border-brand-400 dark:focus:ring-brand-700";
 
-export function HomePage({ content }: HomePageProps) {
-  const csrfToken = useCsrfToken();
-  const turnstileSiteKey = useTurnstileSiteKey();
+export function HomePage({ ctx, content }: HomePageProps) {
+  const { csrfToken, turnstileSiteKey } = ctx;
   return (
     <main id='main-content'>
       {/* Section 1: Hero */}
@@ -38,7 +40,7 @@ export function HomePage({ content }: HomePageProps) {
         </div>
 
         <div class='flex justify-center lg:justify-end'>
-          <Icon symbol='icon-send' viewBox='0 0 24 24' class='w-48 h-48 text-brand-300 dark:text-brand-600' />
+          <CoreIcon name='send' class='w-48 h-48 text-brand-300 dark:text-brand-600' />
         </div>
       </section>
 
@@ -56,11 +58,11 @@ export function HomePage({ content }: HomePageProps) {
                 {content.contact.contacts.map((person) => (
                   <div key={person.name} class='flex flex-col gap-2'>
                     <div class='flex items-center gap-x-3'>
-                      <Icon symbol='icon-phone' viewBox='0 0 24 24' class='h-5 w-5 shrink-0 text-brand-600 dark:text-brand-300' />
+                      <CoreIcon name='phone' class='h-5 w-5 shrink-0 text-brand-600 dark:text-brand-300' />
                       <span class='text-brand-900 dark:text-brand-100'>{person.phone}</span>
                     </div>
                     <div class='flex items-center gap-x-3'>
-                      <Icon symbol='icon-mail' viewBox='0 0 24 24' class='h-5 w-5 shrink-0 text-brand-600 dark:text-brand-300' />
+                      <CoreIcon name='mail' class='h-5 w-5 shrink-0 text-brand-600 dark:text-brand-300' />
                       <span class='text-brand-900 dark:text-brand-100'>{person.email}</span>
                     </div>
                   </div>
@@ -133,7 +135,7 @@ export function HomePage({ content }: HomePageProps) {
                     type='submit'>
                     Send Message
                     <span id='form-spinner' class='htmx-indicator' aria-hidden='true'>
-                      <Icon symbol='icon-spinner' viewBox='0 0 24 24' class='h-4 w-4 animate-spin' />
+                      <CoreIcon name='spinner' class='h-4 w-4 animate-spin' />
                     </span>
                   </button>
                   {turnstileSiteKey && <div data-ref='turnstile' class='cf-turnstile' data-sitekey={turnstileSiteKey} data-size='normal'></div>}

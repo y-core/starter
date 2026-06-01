@@ -5,7 +5,7 @@ export default defineAssetsConfig({
   css: [{ tool: "tailwindcss", input: "src/assets/tailwind.css", output: "css/main.css" }],
   js: { bundles: [{ entry: "src/client/main.ts", outdir: "js", splitting: true, format: "esm" }] },
   sprites: {
-    main: {
+    core: {
       target: "svg/sprite.svg",
       sources: [
         { path: "src/assets/svg/", files: ["logo.svg"] },

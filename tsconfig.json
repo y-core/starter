@@ -21,6 +21,9 @@
       "@y-core/forge/*": [
         "../forge/src/*/mod.ts", // docker
         "../../y-core/forge/src/*/mod.ts" // host
+      ],
+      "@assets": [
+        "./.forge/assets.ts"
       ]
     }
   },
