@@ -2,11 +2,11 @@
 
 import { CoreIcon } from "@assets";
 import { Form } from "@y-core/forge/ui";
-import type { AppContext } from "../app/context";
+import type { RenderContext } from "../app/context";
 import type { SiteContent } from "../model/home.content";
 
 interface HomePageProps {
-  ctx: AppContext;
+  ctx: RenderContext;
   content: SiteContent;
 }
 

@@ -1,23 +1,11 @@
 import { Config, env } from "@y-core/forge/config";
-import type { CsrfConfig, TurnstileConfig } from "@y-core/forge/form";
 import { CsrfConfigSchema } from "@y-core/forge/form";
-import type { BaseUrlConfig, SecurityHeadersOptions } from "@y-core/forge/security";
+import type { SecurityHeadersOptions } from "@y-core/forge/security";
 import { BaseUrlConfigSchema, NONCE } from "@y-core/forge/security";
 import { v } from "@y-core/forge/validation";
 
-export interface AppConfig {
-  site: { url: BaseUrlConfig; debug: boolean };
-  security: { csrf: CsrfConfig };
-  services: { email: EmailConfig; turnstile: TurnstileConfig };
-}
-
-export interface EmailConfig {
-  apiKey: string;
-  apiUrl: string;
-  from: string;
-  senderName: string;
-  to: string;
-}
+export type AppConfig = v.InferOutput<typeof AppConfigSchema>;
+export type EmailConfig = AppConfig["services"]["email"];
 
 const CONFIG = {
   TURNSTILE_CSP: "https://challenges.cloudflare.com",
@@ -57,13 +45,7 @@ export const appConfig = {
   site: { url: env("BASE_URL"), debug: env("LOG_LEVEL") },
   security: { csrf: { secret: env("CSRF_SECRET") } },
   services: {
-    email: {
-      apiKey: env("EMAIL_API_KEY"),
-      apiUrl: "https://api.mailchannels.net/tx/v1/send",
-      from: env("EMAIL_FROM"),
-      senderName: "Forge Studio",
-      to: env("EMAIL_TO"),
-    },
+    email: { apiKey: env("EMAIL_API_KEY"), apiUrl: "https://api.mailchannels.net/tx/v1/send", senderName: "Forge Studio" },
     turnstile: { secretKey: env("TURNSTILE_SECRET_KEY"), siteKey: env("TURNSTILE_SITE_KEY") },
   },
 };

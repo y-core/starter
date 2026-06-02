@@ -1,22 +1,22 @@
 import { csrfProtection, importCsrfKey } from "@y-core/forge/form";
 import { consoleChannel, kvLogChannel, requestLogger } from "@y-core/forge/logging";
 import type { App, MiddlewareHandler } from "@y-core/forge/router";
-import { cors, makeSecurityHeaders, rateLimit, requestId, type SecurityHeadersOptions, verifyOrigin } from "@y-core/forge/security";
+import { cors, makeSecurityHeaders, rateLimit, requestId, requestIdCtx, type SecurityHeadersOptions, verifyOrigin } from "@y-core/forge/security";
 import { configStore } from "./config";
-import type { AppEnvironment } from "./env";
+import type { AppEnv } from "./context";
 
 /*******************************************************************************
  * Application middleware
  ******************************************************************************/
 
-export function applyMiddleware(app: App<AppEnvironment>, security: SecurityHeadersOptions): void {
+export function applyMiddleware(app: App<AppEnv>, security: SecurityHeadersOptions): void {
   app.use("*", makeSecurityHeaders(security));
   app.use("*", requestId());
   app.use(
     "*",
-    requestLogger<AppEnvironment>({
+    requestLogger<AppEnv>({
       channels: (c) => (c.env.LOGS_KV ? [consoleChannel(), kvLogChannel(c.env.LOGS_KV)] : [consoleChannel()]),
-      bindings: (c) => ({ requestId: c.get("requestId") }),
+      bindings: (c) => ({ requestId: requestIdCtx.getOptional(c) }),
     }),
   );
   app.use("/api/*", async (c, next) => {
@@ -29,7 +29,7 @@ export function applyMiddleware(app: App<AppEnvironment>, security: SecurityHead
  * Routes middleware
  ******************************************************************************/
 
-export const contactSecurityGuard: MiddlewareHandler<AppEnvironment> = async (c, next) => {
+export const contactSecurityGuard: MiddlewareHandler<AppEnv> = async (c, next) => {
   // POST-only route — assert the method defensively before any other checks.
   if (c.req.method !== "POST") return c.text("Forbidden", 403);
   const { allowedOrigins } = configStore.get(c.env).site.url;
@@ -40,13 +40,10 @@ export const contactSecurityGuard: MiddlewareHandler<AppEnvironment> = async (c,
   return next();
 };
 
-export const rateLimitGuard: MiddlewareHandler<AppEnvironment> = async (c, next) => {
-  if (!c.env.RATE_LIMITER) {
-    c.get("logger").warn("RATE_LIMITER binding is absent — rate limit inactive");
-  }
-  return rateLimit<AppEnvironment>({ limiter: (c) => c.env.RATE_LIMITER, required: false })(c, next);
+export const rateLimitGuard: MiddlewareHandler<AppEnv> = async (c, next) => {
+  return rateLimit<AppEnv>({ limiter: (c) => c.env.RATE_LIMITER, required: false })(c, next);
 };
 
-export const csrfVerifyGuard: MiddlewareHandler<AppEnvironment> = csrfProtection({
+export const csrfVerifyGuard: MiddlewareHandler<AppEnv> = csrfProtection({
   secret: async (c) => importCsrfKey(configStore.get(c.env).security.csrf.secret),
 });

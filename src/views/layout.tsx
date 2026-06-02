@@ -3,11 +3,11 @@
 import { assets, CoreIcon } from "@assets";
 import type { Child } from "@y-core/forge/ui";
 import { FOUC_SCRIPT } from "@y-core/forge/ui/client";
-import type { AppContext } from "../app/context";
+import type { RenderContext } from "../app/context";
 import type { SiteContent } from "../model/home.content";
 
 interface LayoutProps {
-  ctx: AppContext;
+  ctx: RenderContext;
   content: SiteContent;
   children?: Child;
 }

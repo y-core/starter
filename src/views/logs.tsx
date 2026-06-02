@@ -2,15 +2,15 @@
 import { html } from "@y-core/forge/http";
 import { LogFilterBar, LogTable, type LogViewerLoaderData } from "@y-core/forge/logging/http";
 import type { RouteView } from "@y-core/forge/router";
-import { appContext } from "../app/context";
-import type { AppEnvironment } from "../app/env";
+import type { AppEnv } from "../app/context";
+import { renderContext } from "../app/context";
 import { content } from "../model/home.content";
 import { Layout } from "./layout";
 
 const TBODY_ID = "log-tbody";
 
-export const logsView: RouteView<AppEnvironment, LogViewerLoaderData> = async (c, config, { data }) => {
-  const ctx = await appContext(c, config);
+export const logsView: RouteView<AppEnv, LogViewerLoaderData> = async (c, config, { data }) => {
+  const ctx = await renderContext(c, config);
   return c.html(
     html`<!DOCTYPE html>${(
       <Layout ctx={ctx} content={content}>

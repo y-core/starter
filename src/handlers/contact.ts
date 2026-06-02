@@ -1,14 +1,15 @@
 import { isHoneypotFilled, verifyTurnstile } from "@y-core/forge/form";
 import { htmlResponse, renderError, renderSuccess, renderValidationErrors } from "@y-core/forge/http";
+import { requestLog } from "@y-core/forge/logging";
 import type { AppConfig } from "../app/config";
-import type { AppEnv } from "../app/env";
+import type { AppContext } from "../app/context";
 import { validateContact } from "../model/contact";
 import { sendContactEmail } from "../services/email";
 
 const SUCCESS_MESSAGE = "Thanks. We'll review your note and get back to you soon.";
 
-export async function handleContactAction(c: AppEnv, config: AppConfig): Promise<Response> {
-  const log = c.get("logger");
+export async function handleContactAction(c: AppContext, config: AppConfig): Promise<Response> {
+  const log = requestLog.get(c);
   const request = c.req.raw;
 
   let formData: FormData;
