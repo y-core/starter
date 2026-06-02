@@ -30,7 +30,11 @@ const BASE_TEST_CONFIG: AppConfig = {
 const nullLogger: Logger = { debug: () => {}, info: () => {}, warn: () => {}, error: () => {}, flush: async () => {}, child: () => nullLogger };
 
 function makeContext(request: Request): [AppContext, AppConfig] {
-  const c = { req: { raw: request }, env: {}, get: (key: string) => (key === "logger" ? nullLogger : undefined) } as unknown as AppContext;
+  const c = {
+    req: { raw: request, formData: () => request.formData() },
+    env: {},
+    get: (key: string) => (key === "logger" ? nullLogger : undefined),
+  } as unknown as AppContext;
   return [c, BASE_TEST_CONFIG];
 }
 
@@ -158,7 +162,7 @@ describe("POST /api/contact", () => {
 
     const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(422);
     expect(await response.text()).toBe(
       '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>Name is required.</li><li>A valid email address is required.</li><li>Message must be at least 15 characters.</li></ul></div>',
     );
@@ -278,7 +282,7 @@ describe("POST /api/contact — boundary values", () => {
 
     const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(422);
     expect(await response.text()).toBe(
       '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>Message must be at least 15 characters.</li></ul></div>',
     );
@@ -310,7 +314,7 @@ describe("POST /api/contact — boundary values", () => {
 
     const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(422);
     expect(await response.text()).toBe(
       '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>Name must be 100 characters or fewer.</li></ul></div>',
     );
@@ -357,7 +361,7 @@ describe("POST /api/contact — boundary values", () => {
 
     const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(422);
     expect(await response.text()).toBe(
       '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>Message must be 2000 characters or fewer.</li></ul></div>',
     );
@@ -389,7 +393,7 @@ describe("POST /api/contact — boundary values", () => {
 
     const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(422);
     expect(await response.text()).toBe(
       '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>Contact number must be 20 characters or fewer.</li></ul></div>',
     );
@@ -423,7 +427,7 @@ describe("POST /api/contact — boundary values", () => {
 
     const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(422);
     expect(await response.text()).toBe(
       '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>A valid email address is required.</li></ul></div>',
     );
@@ -440,7 +444,7 @@ describe("POST /api/contact — boundary values", () => {
 
     const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(422);
     expect(await response.text()).toBe(
       '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>Name is required.</li></ul></div>',
     );
@@ -477,7 +481,7 @@ describe("POST /api/contact — XSS payloads", () => {
 
     const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(422);
     expect(await response.text()).toBe(
       '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>Name is required.</li><li>A valid email address is required.</li><li>Message must be at least 15 characters.</li></ul></div>',
     );
@@ -668,7 +672,7 @@ describe("POST /api/contact — edge cases", () => {
 
     const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(422);
     expect(await response.text()).toBe(
       '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>Contact number may only contain digits, spaces, dashes, and plus signs.</li></ul></div>',
     );

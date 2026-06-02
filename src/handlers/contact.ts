@@ -1,4 +1,4 @@
-import { isHoneypotFilled, verifyTurnstile } from "@y-core/forge/form";
+import { isHoneypotFilled, parseFormData, verifyTurnstile } from "@y-core/forge/form";
 import { htmlResponse, renderError, renderSuccess, renderValidationErrors } from "@y-core/forge/http";
 import { requestLog } from "@y-core/forge/logging";
 import type { AppConfig } from "../app/config";
@@ -12,9 +12,9 @@ export async function handleContactAction(c: AppContext, config: AppConfig): Pro
   const log = requestLog.get(c);
   const request = c.req.raw;
 
-  let formData: FormData;
+  let formData: Awaited<ReturnType<typeof parseFormData>>;
   try {
-    formData = await request.formData();
+    formData = await parseFormData(c);
   } catch {
     return htmlResponse(renderError("Unable to process the form data. Please try again."), 400);
   }
@@ -38,7 +38,7 @@ export async function handleContactAction(c: AppContext, config: AppConfig): Pro
   const result = validateContact(formData);
 
   if (!result.ok) {
-    return htmlResponse(renderValidationErrors(result.errors));
+    return htmlResponse(renderValidationErrors(result.errors), 422);
   }
 
   const sent = await sendContactEmail(result.data, config.services.email, log);

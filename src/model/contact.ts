@@ -1,4 +1,4 @@
-import { readFields } from "@y-core/forge/form";
+import { type ReadonlyFormData, readFields } from "@y-core/forge/form";
 import type { ValidationResult } from "@y-core/forge/result";
 import { v } from "@y-core/forge/validation";
 
@@ -45,7 +45,7 @@ const ContactSchema = v.object({
   ),
 });
 
-export function validateContact(formData: FormData): ValidationResult<ContactSubmission> {
+export function validateContact(formData: ReadonlyFormData): ValidationResult<ContactSubmission> {
   const raw = readFields(formData, ["name", "email", "phone", "message"]);
 
   const result = v.safeParse(ContactSchema, raw, { abortPipeEarly: true });
