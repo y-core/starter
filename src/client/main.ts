@@ -1,5 +1,6 @@
 import "@y-core/forge/ui/client/htmx";
-import { isDark, loadScriptOnEvent, mountNav, mountTheme, mountTurnstile } from "@y-core/forge/ui/client";
+import "./resume";
+import { isDark, loadScriptOnEvent, mountNav, mountTheme, mountTurnstile, resume } from "@y-core/forge/ui/client";
 
 mountNav();
 mountTheme();
@@ -10,3 +11,4 @@ loadScriptOnEvent({
   integrity: false,
 });
 mountTurnstile(isDark, { onSuccess: "remove" });
+resume();

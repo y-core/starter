@@ -1,4 +1,4 @@
-# r-code — TypeScript/Hono Coding Rules
+# r-code — TypeScript/fetch-router Coding Rules
 
 > Ruleset for `cc-dev`. Read entirely before writing code.
 
@@ -9,10 +9,10 @@
 ## Code Style
 
 ### Naming
-- Functions: camelCase verb-first (`handleContactAction`, `renderContext`, `applyMiddleware`)
+- Functions: camelCase verb-first (`handleContact`, `renderContext`, `applyMiddleware`)
 - Types: PascalCase (`AppEnv`, `RenderContext`, `ContactInput`)
 - Schemas: PascalCase + `Schema` suffix (`ContactSchema`, `AppConfigSchema`)
-- Guards: camelCase + `Guard` suffix (`contactSecurityGuard`, `csrfVerifyGuard`)
+- Guards: camelCase + `Guard` suffix (`contactGuard`, `csrfVerifyGuard`)
 
 ### Structure
 - Early returns over nested `if`
@@ -31,9 +31,10 @@ Consult `.decisions/ARCHITECTURE_GUIDE.md` and `.decisions/ROUTING.md` for owner
 
 - `src/model/` — TypeScript types and valibot schemas
 - `src/services/` — external integrations (email, third-party APIs)
-- `src/handlers/` — Hono route action handlers
-- `src/views/` — Hono JSX page and fragment components
-- `src/routes.tsx` — declarative route config (single source of truth)
-- `src/app/` — config, middleware, worker setup
+- `src/controllers/` — plain controller modules (`{ middleware, handler }` or a bare handler); each marshals data inline and returns `c.render(view)` for GET routes or a `fragmentResponse` for HTMX mutations
+- `src/views/` — forge JSX page and fragment components (`@jsxImportSource @y-core/forge`); page views own their `<Layout>` composition (the `children` Slot)
+- `src/routes.ts` — declarative route map using the `get()`/`post()` path helpers (single source of truth)
+- `src/router.tsx` — controller binding (`createController` — maps route names to controllers)
+- `src/app/` — config, middleware, worker setup; `render.ts` is a thin JSX→HtmlResponse bridge
 
 Never reach into forge internals to bypass its public API. To change behavior, upstream to the forge repository.

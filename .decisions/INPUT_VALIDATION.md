@@ -83,13 +83,13 @@ The complete sequence in a POST action handler:
     import { v } from "@y-core/forge/validation"
     import { ContactSchema, type ContactInput } from "../model/contact"
 
-    const formData = await parseFormData(c.req.raw)
+    const formData = await parseFormData(c)
 
     // 1. Bot check — earliest possible rejection
     if (isHoneypotFilled(formData)) return renderError(c, "Invalid submission", { status: 400 })
 
     // 2. CSRF verification (via guard, see §4)
-    const guardResult = await contactSecurityGuard(c, formData, config)
+    const guardResult = await contactGuard(c, formData, config)
     if (!guardResult.ok) return guardResult.response
 
     // 3. Extract fields as string record
@@ -105,11 +105,11 @@ The complete sequence in a POST action handler:
 Steps 1–2 reject bots and forged requests before any validation work occurs. Steps 3–5
 are the validation pipeline proper.
 
-### 2b. parseFormData vs. c.req.formData
+### 2b. parseFormData vs. c.request.formData
 
-Always use `parseFormData(c.req.raw)` from the forge form utilities, not
-`c.req.formData()`. The forge wrapper normalises content-type handling and integrates
-with `readFields` and `isHoneypotFilled`.
+Always use `parseFormData(c)` from the forge form utilities, not `c.request.formData()`
+directly. `parseFormData` accepts the request context, normalises content-type handling,
+and integrates cleanly with `readFields` and `isHoneypotFilled`.
 
 ### 2c. readFields Returns a String Record
 
@@ -169,20 +169,23 @@ Reject at the earliest possible step.
 
 ## 4. CSRF Token
 
-### 4a. mintCsrf in renderContext
+### 4a. csrfPath → renderContext → CSRF token
 
-The CSRF token is minted in the loader for any view that contains a form. It is bound to
-the action path so tokens cannot be reused across endpoints:
+The CSRF token is minted by the controller via `renderContext(c, config, { csrfPath: routes.contact.href() })`.
+The `csrfPath` is bound to the action path so tokens cannot be reused across endpoints:
 
-    import { mintCsrf } from "@y-core/forge/csrf"
+    import { mintCsrf } from "@y-core/forge/form"
 
-    const csrfToken = await mintCsrf(c, "/api/contact")
+    // Inside renderContext (called by the controller's loader):
+    csrfToken: csrfPath ? await mintCsrf(c, csrfPath) : ""
 
-    return htmlResponse(c.req.raw,
-      <Layout ctx={ctx}>
-        <ContactPage csrfToken={csrfToken} />
-      </Layout>
-    )
+    // In a definePage loader:
+    loader: async (c, config) => ({
+      ctx: await renderContext(c, config, routes.contact.href()),
+    })
+
+`ctx.csrfToken` is materialized by the controller and injected into the form's
+hidden `__csrf` field by the view component.
 
 ### 4b. CSRF Hidden Input in Form
 
@@ -196,7 +199,7 @@ the `<form>` element. HTMX includes all form fields in the POST body automatical
 
 ### 4c. csrfVerifyGuard in the Handler
 
-`csrfVerifyGuard` (part of `contactSecurityGuard`) reads `__csrf` from the form data and
+`csrfVerifyGuard` (part of `contactGuard`) reads `__csrf` from the form data and
 verifies it against the action path and the signing key. A missing, expired, or
 path-mismatched token results in a 403 response. See
 [MIDDLEWARE_AND_CONTEXT.md](./MIDDLEWARE_AND_CONTEXT.md) §3c for guard composition

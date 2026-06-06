@@ -35,8 +35,8 @@ weight: 15
     export function createWorker(security: SecurityHeadersOptions) {
       const app = createApp<AppEnv>({ config: configStore, isDebug: (c) => configStore.get(c.env).site.debug })
       applyMiddleware(app, security)
-      applyRoutes(app, routes)
-      applyAssets(app, { notFoundView })
+      app.map(routes, controller)
+      applyAssets(app, { notFoundView: notFoundController })
       return app
     }
     export default createWorker(securityHeaders)  // production default
@@ -49,9 +49,9 @@ live-reload hash on top via `mergeSecurityHeaders`.
 
 The four steps inside the factory execute in a fixed order:
 
-1. `createApp` — Hono app with Config integration and debug mode flag
+1. `createApp` — Forge app with Config integration and debug mode flag
 2. `applyMiddleware` — security headers, request ID, logger, CORS for `/api/*`
-3. `applyRoutes` — all route definitions from `src/routes.tsx`
+3. `app.map(routes, controller)` — mounts routes from `src/routes.ts` + handlers from `src/router.tsx`
 4. `applyAssets` — static asset serving and 404 handler
 
 Middleware must be applied before routes so that security headers and request context
@@ -77,12 +77,13 @@ The dev entry (`src/worker.dev.ts`) is passed as the positional argument to
     src/worker.dev.ts      ← dev entry (live-reload CSP hash)
     src/app/
       config.ts            ← AppConfigSchema, configStore, securityHeaders
-      context.ts           ← AppEnv, Bindings, RenderContext, renderContext()
-      middleware.ts        ← applyMiddleware(), route guard sentinels
-    src/routes.tsx         ← declarative RouteConfig array
-    src/handlers/          ← route loaders and action handlers
+      context.ts           ← AppEnv, AppContext, RenderContext, renderContext()
+      middleware.ts        ← applyMiddleware(), route guard sentinels (rateLimitGuard, csrfVerifyGuard)
+    src/routes.ts          ← declarative route map (route({ home: get("/"), … }))
+    src/router.tsx         ← createController binding (controller/middleware mapping)
+    src/controllers/       ← plain controllers (definePage handlers + HTMX mutation handlers)
     src/services/          ← external integrations (email, turnstile)
-    src/views/             ← Hono JSX view components
+    src/views/             ← forge JSX view components (@jsxImportSource @y-core/forge); page views own <Layout>
     src/model/             ← domain types and valibot schemas
     src/client/main.ts     ← browser JS (esbuild entry point)
     src/assets/            ← tailwind.css, SVG assets
@@ -93,15 +94,16 @@ Each layer may only import from the layers listed:
 
 | Layer | May import from |
 |---|---|
-| `handlers/` | `services/`, `model/`, `app/` |
+| `controllers/` | `services/`, `model/`, `app/`, `views/`, `routes`, `@y-core/forge/render` |
 | `services/` | `model/`, `app/config` |
-| `views/` | `model/`, `app/context` |
-| `app/middleware.ts` | `app/config` |
-| `routes.tsx` | `handlers/`, `views/`, `app/middleware` |
-| `worker.ts` | `routes.tsx`, `app/` |
+| `views/` | `model/`, `app/context`, `views/layout` |
+| `app/middleware.ts` | `app/config`, forge (`security`, `form`, `logging`) |
+| `routes.ts` | (route data only — no handlers or views) |
+| `router.tsx` | `controllers/`, `app/middleware` |
+| `worker.ts` | `routes.ts`, `router.tsx`, `controllers/`, `app/` |
 
-Handlers must not import from views. Services must not import from handlers or views.
-Views must not own business rules or call services directly.
+Controllers must not import from other controllers. Services must not import from controllers or views.
+Views must not own business rules or call services directly. Page views compose their own `<Layout>`.
 
 ### 2c. No Layer Skipping — Handler → Service Boundary
 
@@ -109,12 +111,12 @@ Handlers delegate to services; services own all external calls.
 
 BAD — handler calling email API directly:
 
-    // src/handlers/contact.ts
+    // src/controllers/contact.ts
     const res = await fetch("https://api.mailchannels.net/...", { body: JSON.stringify(payload) })
 
 GOOD — handler calls service; service owns external call:
 
-    // src/handlers/contact.ts
+    // src/controllers/contact.ts
     await emailService.send(c, config, formData)
 
     // src/services/email.ts
@@ -144,31 +146,32 @@ environment variables against `AppConfigSchema` on first access and caches the r
 Never read `c.env.SOME_VAR` directly in handlers or services — always go through
 `configStore.get(c.env)` so all access is typed and validated.
 
-### 3b. AppEnv — Hono Generic Type Parameter
+### 3b. AppEnv and AppContext — Type Parameters
 
-    type AppEnv = {
-      Bindings: Env                   // generated Cloudflare bindings (ASSETS, LOGS_KV, RATE_LIMITER, env vars)
-      Config: AppConfig               // validated app configuration
-      Variables: CsrfContext & RequestIdContext & LoggerContext & SecureHeadersContext
-    }
+    type AppEnv = Env  // alias for the generated Cloudflare bindings type
 
-`AppEnv` is the single generic parameter threaded through `App<AppEnv>`,
-`Context<AppEnv>`, `MiddlewareHandler<AppEnv>`, and `RouteConfig<AppEnv>`.
-All forge middleware stores its state into `Variables`, making it available via `c.get(...)`.
+    type AppContext = ForgeAppContext<AppEnv, Record<string, string>, AppConfig>
+
+`AppEnv` is the `Bindings` generic threaded through `Forge<AppEnv>`, `AppContext`, and
+`Middleware`. Context variables set by global middleware (nonce, requestId, CSRF token,
+logger) are stored via typed `contextVar` accessors — not a `Variables` union — and
+accessed through forge's context helpers (`getNonce(c)`, `requestIdCtx.getOptional(c)`).
 
 ### 3c. renderContext — Per-Request Presentation State
 
-    const ctx = await renderContext(c, config)
+    const ctx = await renderContext(c, config, "/api/contact")
     // ctx: { baseUrl, csrfToken, nonce, turnstileSiteKey }
 
 `renderContext` materializes per-request values for injection into JSX views:
-- `nonce` — extracted from `SecureHeadersContext` (set by `makeSecurityHeaders`)
-- `csrfToken` — minted fresh per request via `mintCsrf`
+- `nonce` — extracted from context (set by `makeSecurityHeaders`)
+- `csrfToken` — minted only when `csrfPath` is provided; empty string for pages without forms
 - `baseUrl` — `config.site.url.origin`
 - `turnstileSiteKey` — from `config.services.turnstile.siteKey`
 
-Call `renderContext` in loader functions, not inside view components. Views receive
-a typed `RenderContext` prop and remain pure rendering functions.
+`renderContext` is called inside the controller's `loader`. The controller passes the resulting
+`ctx` as a view prop. `renderPage()` from `@y-core/forge/render` is called in the `view`
+function to convert JSX to an `HtmlResponse`. Views receive a typed `RenderContext` prop,
+compose their own `<Layout ctx={ctx}>`, and remain pure rendering functions.
 
 ---
 
@@ -245,10 +248,10 @@ Follow this sequence when adding any new feature. Never skip or reorder steps.
 
 1. **Model** — define types in `src/model/` (valibot schema + inferred TypeScript types)
 2. **Service** — implement external integrations in `src/services/` using the model types
-3. **Handler** — parse form data → validate against schema → call service → return response
-   (`src/handlers/`); use forge's fragment helpers for HTMX responses
-4. **View** — write the JSX component in `src/views/` accepting typed props from the model
-5. **Route** — add a `route(...)` entry to `src/routes.tsx` with the handler and middleware array
+3. **Controller** — in `src/controllers/`: render handlers use `definePage({ loader, view })` from `@y-core/forge/app`; the loader marshals `renderContext` + data, the view calls `renderPage()` from `@y-core/forge/render`;
+   mutation handlers parse form data → validate against schema → call service → return a `fragmentResponse` (forge fragment helpers)
+4. **View** — write the JSX component in `src/views/` accepting typed props from the model (page views own `<Layout>`)
+5. **Route** — add a route entry to `src/routes.ts`; bind handler + middleware in `src/router.tsx` via `createController`
 6. **Middleware** — add or reuse guard sentinels in `src/app/middleware.ts` if the route
    needs CSRF, rate limiting, origin check, or method enforcement
 7. **Tests** — write tests in `tests/` using the `app.request(...)` pattern against the
@@ -256,15 +259,38 @@ Follow this sequence when adding any new feature. Never skip or reorder steps.
 
 ### 6b. Handler Structure Pattern
 
-A well-formed handler follows parse → validate → act → respond:
+A well-formed action handler follows parse → validate → act → respond:
 
-    export const handleContactAction: ActionHandler<AppEnv> = async (c) => {
-      const config = configStore.get(c.env)
-      const form = await c.req.formData()
-      const result = v.safeParse(ContactSchema, Object.fromEntries(form))
-      if (!result.success) return renderError(c, result.issues)
-      await emailService.send(c, config, result.output)
-      return renderSuccess(c)
+    export async function handleContact(context: RequestContext): Promise<Response> {
+      const c = context as AppContext
+      const config = c.config
+      const formData = await parseFormData(c)
+      const result = validateContact(formData)
+      if (!result.ok) return fragmentResponse(renderValidationErrors(result.errors), 422)
+      const sent = await emailService.send(result.data, config.services.email)
+      if (!sent.ok) return fragmentResponse(renderError("Something went wrong."), 500)
+      return fragmentResponse(renderSuccess("Message sent!"))
+    }
+
+Full-page controllers use `definePage` with a `loader` and a `view`; the view calls `renderPage`:
+
+    // src/controllers/home.tsx
+    export const homeController = {
+      middleware: [csrfVerifyGuard],
+      handler: definePage<AppEnv, AppConfig, HomeData>({
+        cache: "no-store",
+        loader: async (c, config) => ({
+          ctx: await renderContext(c, config, routes.contact.href()),
+          content,
+        }),
+        view: (_c, _cfg, state) =>
+          renderPage(<HomeView ctx={state.data.ctx} content={state.data.content} />),
+      }),
+    }
+
+    // src/views/home.tsx — the view owns its Layout composition
+    export function HomeView({ ctx, content }: HomeViewProps) {
+      return <Layout ctx={ctx}>{/* …main… */}</Layout>
     }
 
 Keep handlers thin. If validation or service logic grows complex, extract it to the

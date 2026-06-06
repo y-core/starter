@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import app from "../src/worker";
 
-const MOCK_ASSETS = { fetch: async () => new Response("", { status: 200 }) };
-const MOCK_ASSETS_404 = { fetch: async () => new Response("Not Found", { status: 404 }) };
+const MOCK_ASSETS = { fetch: async () => new Response("", { status: 200 }) } as unknown as Fetcher;
+const MOCK_ASSETS_404 = { fetch: async () => new Response("Not Found", { status: 404 }) } as unknown as Fetcher;
 
 const MINIMUM_ENV = {
   ASSETS: MOCK_ASSETS,
@@ -13,7 +13,7 @@ const MINIMUM_ENV = {
   EMAIL_TO: "to@example.com",
   TURNSTILE_SECRET_KEY: "test-ts-key",
   TURNSTILE_SITE_KEY: "test-site-key",
-};
+} as unknown as Env;
 
 describe("GET /", () => {
   it("returns 200 status", async () => {
@@ -36,7 +36,7 @@ describe("GET /", () => {
   it("includes a JSON-LD script tag", async () => {
     const res = await app.request("/", {}, MINIMUM_ENV);
     const text = await res.text();
-    expect(text).toContain('<script type="application/ld+json">');
+    expect(text).toContain('type="application/ld+json"');
   });
 
   it("includes required security headers", async () => {

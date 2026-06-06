@@ -201,9 +201,9 @@ checks `c.env.LOGS_KV` before constructing the channel:
       : [consoleChannel()]
 
 When absent (bun test, local dev without KV), logging falls back to console only.
-The `/admin/logs` route reads log records via `readLogs` from
-`@y-core/forge/logging/http`. See [DATA_STORAGE.md](./DATA_STORAGE.md) §1 for
-the typed KV access pattern.
+The `/admin/logs` route is handled by `adminLogsController` which calls `readLogViewer`
+from `@y-core/forge/logging/http` internally. See [DATA_STORAGE.md](./DATA_STORAGE.md) §1
+for the typed KV access pattern.
 
 ### 4c. RATE_LIMITER Binding — DoS Mitigation
 

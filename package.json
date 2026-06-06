@@ -7,13 +7,14 @@
     "build:assets": "bun run node_modules/@y-core/forge/src/assets/cli/bin.ts build all --minify --config src/assets/config.ts --out .forge/assets.ts",
     "cf:typecheck": "wrangler types ./.types/cloudflare.d.ts --no-include-env && wrangler types ./.types/worker-configuration.d.ts --no-include-runtime",
     "check": "bun run cf:typecheck && tsgo --noEmit && bun run lint && bun test tests/",
-    "dev": "bun run build:assets && (tailwindcss -i src/assets/tailwind.css -o public/assets/css/main.css --watch & wrangler dev src/worker.dev.ts --live-reload)",
+    "dev": "bun run build:assets && wrangler dev src/worker.dev.ts --live-reload",
     "lint": "biome check src/ tests/",
     "lint:fix": "biome check --write src/ tests/",
-    "test": "bun test tests/"
+    "test": "bun test tests/",
+    "_forge": "file://../forge | github:y-core/forge#v0.0.20"
   },
   "dependencies": {
-    "@y-core/forge": "github:y-core/forge#v0.0.18"
+    "@y-core/forge": "github:y-core/forge#v0.0.23"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.16",
@@ -22,6 +23,7 @@
     "esbuild": "^0.28.0",
     "sharp": "^0.34.5",
     "tailwindcss": "^4.3.0",
+    "urlpattern-polyfill": "^10.1.0",
     "wrangler": "^4.96.0"
   },
   "overrides": {

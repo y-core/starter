@@ -1,14 +1,7 @@
-import type { CsrfContext } from "@y-core/forge/form";
+import type { AppContext as ForgeAppContext } from "@y-core/forge/context";
 import { mintCsrf } from "@y-core/forge/form";
-import type { LoggerContext } from "@y-core/forge/logging";
-import type { Context } from "@y-core/forge/router";
-import type { RequestIdContext, SecureHeadersContext } from "@y-core/forge/security";
 import { getNonce } from "@y-core/forge/security";
 import type { AppConfig } from "./config";
-
-export type Bindings = Env;
-export type AppEnv = { Bindings: Bindings; Config: AppConfig; Variables: CsrfContext & RequestIdContext & LoggerContext & SecureHeadersContext };
-export type AppContext = Context<AppEnv>;
 
 export interface RenderContext {
   baseUrl?: string;
@@ -17,11 +10,17 @@ export interface RenderContext {
   turnstileSiteKey?: string;
 }
 
-/** Materializes per-request values from the Hono context into a typed `ctx` object. */
-export async function renderContext(c: AppContext, config: AppConfig, opts?: { csrfPath?: string }): Promise<RenderContext> {
+export type AppEnv = Env;
+export type AppContext = ForgeAppContext<AppEnv, Record<string, string>, AppConfig>;
+
+/** Materializes per-request values into a typed `ctx`. Config is passed explicitly (forge idiom);
+ *  the context is used only to mint the CSRF token and read the nonce, so it is config-agnostic. */
+export async function renderContext(c: ForgeAppContext<AppEnv>, config: AppConfig, csrfPath?: string): Promise<RenderContext> {
   return {
     baseUrl: config.site.url.origin,
-    csrfToken: await mintCsrf(c, opts?.csrfPath),
+    // Only mint a token when the caller declares the form's action path; pages without a form
+    // (e.g. the 404 page) get an empty token. `mintCsrf` requires a non-empty path.
+    csrfToken: csrfPath ? await mintCsrf(c, csrfPath) : "",
     nonce: getNonce(c),
     turnstileSiteKey: config.services.turnstile.siteKey,
   };

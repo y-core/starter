@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { createCsrfToken, importCsrfKey } from "@y-core/forge/form";
-import type { Logger } from "@y-core/forge/logging";
 import type { AppConfig } from "../src/app/config";
-import type { AppContext } from "../src/app/context";
-import { handleContactAction } from "../src/handlers/contact";
+import type { AppEnv } from "../src/app/context";
+import { handleContact } from "../src/controllers/actions/contact";
 import app from "../src/worker";
 import devApp from "../src/worker.dev";
+import { makeTestContext } from "./setup";
 
 const BASE_URL = "https://example.com";
 
@@ -26,17 +26,6 @@ const BASE_TEST_CONFIG: AppConfig = {
     turnstile: { secretKey: "test-ts-key", siteKey: "test-site-key" },
   },
 };
-
-const nullLogger: Logger = { debug: () => {}, info: () => {}, warn: () => {}, error: () => {}, flush: async () => {}, child: () => nullLogger };
-
-function makeContext(request: Request): [AppContext, AppConfig] {
-  const c = {
-    req: { raw: request, formData: () => request.formData() },
-    env: {},
-    get: (key: string) => (key === "logger" ? nullLogger : undefined),
-  } as unknown as AppContext;
-  return [c, BASE_TEST_CONFIG];
-}
 
 const VALID_FORM = new URLSearchParams({
   name: "Jane Example",
@@ -72,7 +61,7 @@ const MINIMUM_ENV = {
   EMAIL_TO: "to@example.com",
   TURNSTILE_SECRET_KEY: "test-ts-key",
   TURNSTILE_SITE_KEY: "test-site-key",
-};
+} as unknown as Env;
 
 let _savedFetch: typeof globalThis.fetch;
 let _csrfToken = "";
@@ -493,8 +482,8 @@ describe("POST /api/contact — Turnstile verification", () => {
     new Request("https://example.com/api/contact", { method: "POST", headers: HTMX_HEADERS, body: body.toString() });
 
   it("returns 403 when cf-turnstile-response token is missing", async () => {
-    const [c, config] = makeContext(makeRequest(VALID_FORM));
-    const response = await handleContactAction(c, config);
+    const c = makeTestContext(makeRequest(VALID_FORM), {} as AppEnv, BASE_TEST_CONFIG);
+    const response = await handleContact(c);
 
     expect(response.status).toBe(403);
     expect(await response.text()).toBe(
@@ -510,8 +499,8 @@ describe("POST /api/contact — Turnstile verification", () => {
     body.set("cf-turnstile-response", "bad-token");
 
     try {
-      const [c, config] = makeContext(makeRequest(body));
-      const response = await handleContactAction(c, config);
+      const c = makeTestContext(makeRequest(body), {} as AppEnv, BASE_TEST_CONFIG);
+      const response = await handleContact(c);
 
       expect(response.status).toBe(403);
       expect(await response.text()).toBe(
@@ -535,8 +524,8 @@ describe("POST /api/contact — Turnstile verification", () => {
     body.set("cf-turnstile-response", "valid-token");
 
     try {
-      const [c, config] = makeContext(makeRequest(body));
-      const response = await handleContactAction(c, config);
+      const c = makeTestContext(makeRequest(body), {} as AppEnv, BASE_TEST_CONFIG);
+      const response = await handleContact(c);
 
       expect(response.status).toBe(200);
       expect(await response.text()).toBe(EXPECTED_SUCCESS_HTML);
@@ -679,6 +668,62 @@ describe("POST /api/contact — edge cases", () => {
   });
 });
 
+const MOCK_LOGS_KV = {
+  list: async () => ({ keys: [], list_complete: true }),
+  get: async () => null,
+  getWithMetadata: async () => ({ value: null, metadata: null }),
+  put: async () => {},
+  delete: async () => {},
+};
+const LOGS_ENV = { ...MINIMUM_ENV, LOGS_KV: MOCK_LOGS_KV } as unknown as Env;
+
+const EXPECTED_EMPTY_TBODY =
+  '<tbody id="log-tbody"><tr><td colspan="5" class="py-8 text-center text-brand-500 text-sm">No log entries found.</td></tr></tbody>';
+
+describe("GET /admin/logs — full page", () => {
+  it("returns 200 status", async () => {
+    const res = await app.request("/admin/logs", {}, LOGS_ENV);
+    expect(res.status).toBe(200);
+  });
+
+  it("renders a full HTML page with the log viewer", async () => {
+    const res = await app.request("/admin/logs", {}, LOGS_ENV);
+    const text = await res.text();
+    expect(text).toContain("<!DOCTYPE html>");
+    expect(text).toContain(">Request Log</h1>");
+    expect(text).toContain('hx-get="/admin/logs"');
+    expect(text).toContain(">Timestamp</th>");
+    expect(text).toContain(">Level</th>");
+    expect(text).toContain(">Request ID</th>");
+    expect(text).toContain(EXPECTED_EMPTY_TBODY);
+  });
+
+  it("includes required security headers", async () => {
+    const res = await app.request("/admin/logs", {}, LOGS_ENV);
+    expect(res.headers.get("content-security-policy")).not.toBeNull();
+    expect(res.headers.get("strict-transport-security")).toBe("max-age=63072000; includeSubDomains; preload");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("referrer-policy")).toBe("strict-origin-when-cross-origin");
+  });
+});
+
+describe("GET /admin/logs — HTMX partial", () => {
+  it("returns only the tbody fragment when HX-Request is true", async () => {
+    const res = await app.request("/admin/logs", { headers: { "HX-Request": "true" } }, LOGS_ENV);
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    // exact match proves TBODY_ID in the partial equals the id the full page registers as swap target
+    expect(text).toBe(EXPECTED_EMPTY_TBODY);
+  });
+
+  it("does not include the full page shell in the partial response", async () => {
+    const res = await app.request("/admin/logs", { headers: { "HX-Request": "true" } }, LOGS_ENV);
+    const text = await res.text();
+    expect(text).not.toContain("<!DOCTYPE html>");
+    expect(text).not.toContain(">Request Log</h1>");
+  });
+});
+
 describe("POST /api/contact — email delivery failure", () => {
   const makeRequest = (body: URLSearchParams) =>
     new Request("https://example.com/api/contact", { method: "POST", headers: HTMX_HEADERS, body: body.toString() });
@@ -693,8 +738,8 @@ describe("POST /api/contact — email delivery failure", () => {
     };
 
     try {
-      const [c, config] = makeContext(makeRequest(VALID_FORM_WITH_TOKEN));
-      const response = await handleContactAction(c, config);
+      const c = makeTestContext(makeRequest(VALID_FORM_WITH_TOKEN), {} as AppEnv, BASE_TEST_CONFIG);
+      const response = await handleContact(c);
 
       expect(response.status).toBe(500);
       expect(await response.text()).toBe(EXPECTED_EMAIL_ERROR_HTML);

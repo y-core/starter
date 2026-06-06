@@ -87,7 +87,7 @@ Be precise: exact file paths, function signatures, type names. `cc-dev` reads yo
 - Never plan a change that violates layer boundaries (handler importing services directly from wrong layer, service importing handler)
 - Never plan logic in `src/` that should be upstreamed to the shared `@y-core/forge` library — "leverage forge first"
 - Always plan test cases alongside implementation (hand off to `cc-test` in plan)
-- New routes must always be added to `src/routes.tsx` — never registered ad-hoc inside handlers or services
+- New routes must always be added to `src/routes.ts` — never registered ad-hoc inside handlers or services
 
 For project-specific locations, consult `README.md`.
 

@@ -1,7 +1,7 @@
 # CLAUDE.md — Architectural Constitution
 
-> Hono JSX (TypeScript Worker) + Tailwind CSS v4 + HTMX on Cloudflare Workers.
-> Hono owns all routes. Static assets (`public/`) served via Wrangler.
+> fetch-router (TypeScript Worker) + Tailwind CSS v4 + HTMX on Cloudflare Workers.
+> forge's `Forge` router owns all routes. Static assets (`public/`) served via Wrangler.
 
 ---
 
@@ -47,15 +47,15 @@ bun run test          # tests
 
 ## Architecture
 
-**Entry:** `src/worker.ts` exports `createWorker(security: SecurityHeadersOptions)` — a factory that builds the Hono app, applies `makeSecurityHeaders(security)`, `applyRoutes`, and `serveAssets`. Its default export is the production app (base CSP: `['self', NONCE, TURNSTILE_CSP]`).
+**Entry:** `src/worker.ts` exports `createWorker(security: SecurityHeadersOptions)` — a factory that calls `createApp`, `applyMiddleware` (security headers, requestId, logging, CORS), `app.map(routes, controller)`, and `applyAssets`. Its default export is the production app (base CSP: `['self', NONCE, TURNSTILE_CSP]`).
 
 **Dev entry:** `src/worker.dev.ts` — default-exports `createWorker(mergeSecurityHeaders(securityHeaders, { scriptSrc: [WRANGLER_LIVE_RELOAD_HASH] }))`. Layers the Wrangler live-reload inline-script hash onto the prod CSP for `wrangler dev --live-reload`. The reload hash is deliberately kept out of the production CSP so it cannot leak by construction.
 
-**Routes:** `src/routes.tsx` — declarative route config using `@y-core/forge/router`.
+**Routes:** `src/routes.ts` — declarative route map using `get()`/`post()` path helpers; `src/router.tsx` — controller binding using `@y-core/forge/router`.
 
-**Views:** `src/views/*.tsx` — Hono JSX components (NOT Hugo templates).
+**Controllers:** `src/controllers/*.{ts,tsx}` — plain controller modules (`{ middleware, handler }` or a bare handler). GET handlers use `definePage({ loader, view })` from `@y-core/forge/app`; the `view` calls `renderPage()` from `@y-core/forge/render`. Mutation handlers return `fragmentResponse` with forge fragment helpers. `health` stays inline in `router.tsx`; `adminLogs` is its own controller module.
 
-**Handlers:** `src/handlers/` — action handlers for form submissions and API endpoints.
+**Views:** `src/views/*.tsx` — forge JSX components (`@jsxImportSource @y-core/forge`; NOT Hugo templates). Page views own their `<Layout>` composition (the `children` Slot); `renderPage()` from `@y-core/forge/render` converts JSX to an `HtmlResponse`.
 
 **Services:** `src/services/` — external integrations (email, etc.).
 
@@ -65,7 +65,7 @@ bun run test          # tests
 
 **Styles:** `src/assets/tailwind.css` — Tailwind v4 entry point with `@theme {}` tokens.
 
-**Shared lib:** `@y-core/forge` (GitHub: `github.com/y-core/forge`) — reusable utilities for Hono + Workers.
+**Shared lib:** `@y-core/forge` (GitHub: `github.com/y-core/forge`) — reusable utilities for fetch-router + Workers.
 
 ## Guide Index
 

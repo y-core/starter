@@ -12,7 +12,7 @@ weight: 30
 
 ## 0. Quick Reference
 
-- §1 views/ directory: layout, home, logs, not-found
+- §1 views/ directory: layout, home, not-found (logs rendered by adminLogsController via forge LogViewerContent)
 - §2 Layout: FOUC_SCRIPT, nonce, deferred scripts
 - §3 Home view: hero, contact form, JSON-LD, OG meta
 - §4 HTMX patterns: hx-post, hx-target, hx-swap
@@ -23,52 +23,66 @@ weight: 30
 
 ## 1. views/ Directory
 
-The `src/views/` directory contains all Hono JSX components that render full pages or
-page fragments. Each file exports one primary component. Views receive all data via props
-and never call services or perform validation directly.
+The `src/views/` directory contains all forge JSX components that render full pages or
+page fragments (`@jsxImportSource @y-core/forge`). Each file exports one primary component.
+Views receive all data via props and never call services or perform validation directly.
 
 ### 1a. layout.tsx — Root Layout
 
-Wraps all pages. Injects: FOUC_SCRIPT inline (synchronous, in head), CSS link, nav,
-deferred client scripts. All inline scripts carry `nonce={ctx.nonce}`.
+Wraps all pages — composed by each page view as `<Layout ctx={ctx}>…</Layout>` (the
+`children` Slot). Injects: FOUC_SCRIPT inline (synchronous, in head), CSS link, nav,
+deferred client scripts. All inline scripts carry `nonce={ctx.nonce}`. `Layout` sources
+`site` itself via `import { site } from "../model/site.content"`.
 
-    export function Layout({ ctx, children }: { ctx: RenderContext; children: JSX.Element }) {
+    export function Layout({ ctx, children }: { ctx: RenderContext; children?: JSXNode }) {
+      const { nonce } = ctx
       return (
         <html lang="en">
           <head>
-            <meta charset="UTF-8" />
-            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-            <script nonce={ctx.nonce} dangerouslySetInnerHTML={{ __html: FOUC_SCRIPT }} />
-            <link rel="stylesheet" href="/assets/styles.css" nonce={ctx.nonce} />
-            <title>{ctx.title}</title>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <title>{site.title}</title>
+            {/* FOUC_SCRIPT before stylesheet — sets data-theme-preference synchronously */}
+            <script nonce={nonce} dangerouslySetInnerHTML={{ __html: FOUC_SCRIPT }} />
+            <link rel="stylesheet" href={assets.path("css/main.css")} />
+            <script nonce={nonce} src={assets.path("js/main.js")} type="module" />
           </head>
           <body>
-            <Nav ctx={ctx} />
+            <header>…nav with ThemeToggle…</header>
             {children}
-            <script defer src="/assets/js/main.js" nonce={ctx.nonce} />
+            <footer>…</footer>
           </body>
         </html>
       )
     }
 
-`RenderContext` is injected from `createRenderContext(c)` in the handler before passing
-to any view. See [MIDDLEWARE_AND_CONTEXT.md](./MIDDLEWARE_AND_CONTEXT.md) §3.
+`RenderContext` is produced by `renderContext(c, config, csrfPath?)` in the controller's
+`loader` and passed to the page view as a prop. The page view owns its `<Layout ctx={ctx}>…</Layout>`
+composition. `Layout` sources the site title from `../model/site.content`; asset paths come from
+the `@assets` alias (`assets.path(…)`). The controller's `view` calls `renderPage(<HomeView ctx={ctx} …/>)`
+from `@y-core/forge/render`. See [MIDDLEWARE_AND_CONTEXT.md](./MIDDLEWARE_AND_CONTEXT.md) §4.
 
 ### 1b. home.tsx — Home Page
 
 Full home page with hero section and contact form. Receives `RenderContext` for nonce,
 CSRF token, and Turnstile site key. Emits JSON-LD and OG meta in the `<head>` slot.
 
-### 1c. logs.tsx — Log Viewer
+### 1c. Log Viewer — adminLogsController
 
-Wraps the forge `LogTable` component in the app layout. Receives `LogViewerLoaderData`
-(a superset of `RenderContext`) from the `/admin/logs` route loader. The cast to
-`RouteView` in routes.tsx is intentional — see [CODE_REVIEW.md §8](./CODE_REVIEW.md).
+The `/admin/logs` page is rendered by `adminLogsController` in `src/controllers/admin-logs.tsx`.
+It uses `definePage` with a `loader` that calls `readLogViewer` and a `view` that calls
+`renderPage(<Layout ctx={ctx}><LogViewerContent data={state.data} icon={CoreIcon} /></Layout>)`.
+Both `readLogViewer` and `LogViewerContent` are imported from `@y-core/forge/logging/http`.
+There is no `logs.tsx` view component in the app — the log viewer UI comes from forge.
 
 ### 1d. not-found.tsx — 404 Page
 
-Minimal view: "Page not found" heading with a link back to `/`. Rendered by the
-catch-all route defined at the bottom of `src/routes.tsx`.
+Minimal view: "Page not found" heading with a link back to `/`. The `NotFoundView` in
+`src/views/not-found.tsx` owns its `<Layout ctx={ctx}>` composition. Rendered by the
+`notFoundController` in `src/controllers/not-found.tsx`, which marshals `renderContext`
+(no `csrfPath` → empty token) and calls `renderPage(<NotFoundView ctx={ctx} />, { status: 404 })`
+from `@y-core/forge/render`. `notFoundController` is passed to
+`applyAssets(app, { notFoundView: notFoundController })` in `worker.ts` as the catch-all 404 handler.
 
 ---
 
@@ -183,7 +197,7 @@ for the fragment. Naming convention: `id` and `data-ref` use the same slug.
     <div id="contact-result" data-ref="contact-result" />
 
     {/* In handler — success path */}
-    return renderSuccess(c, <ContactSuccessFragment />)
+    return fragmentResponse(renderSuccess("Thanks — we'll be in touch."))
 
     {/* In handler — validation error path */}
     return renderValidationErrors(c, validationErrors)
@@ -194,11 +208,11 @@ They set the correct `Content-Type: text/html` and status codes expected by HTMX
 ### 4b. HX-Request Header Enforcement
 
 HTMX automatically adds `HX-Request: true` to all requests it initiates. The
-`contactSecurityGuard` (or an equivalent guard) checks this header and returns 403
+`contactGuard` (or an equivalent guard) checks this header and returns 403
 for non-HTMX requests. This prevents direct form POST abuse outside the UI.
 
-    {/* routes.tsx — guard order matters */}
-    middleware: [contactSecurityGuard, rateLimitGuard, csrfVerifyGuard]
+    {/* router.tsx — guard order matters */}
+    contact: { middleware: contactGuards, handler: handleContact }
 
 See [MIDDLEWARE_AND_CONTEXT.md](./MIDDLEWARE_AND_CONTEXT.md) §2 for guard ordering rules.
 
@@ -216,7 +230,7 @@ by `mountTurnstile`. The response token is written into a hidden field before su
     mountTurnstile()
 
 The site key is read from `ctx.turnstileSiteKey`, which is populated by
-`createRenderContext` from the environment config.
+`renderContext` from `config.services.turnstile.siteKey`.
 
 ### 4d. Loading Indicators
 

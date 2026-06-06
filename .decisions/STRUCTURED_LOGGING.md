@@ -1,6 +1,6 @@
 ---
 title: "Structured Logging"
-description: "consoleChannel, kvLogChannel, LOGS_KV, requestLogger, requestId correlation, log levels, admin logs route, logViewer, TODO auth, no PII, KV log storage"
+description: "consoleChannel, kvLogChannel, LOGS_KV, requestLogger, requestId correlation, log levels, admin logs route, adminLogsController, readLogViewer, LogViewerContent, TODO auth, no PII, KV log storage"
 weight: 22
 ---
 
@@ -16,7 +16,7 @@ weight: 22
 - §1 Channels: `consoleChannel` + `kvLogChannel` (LOGS_KV binding)
 - §2 Request correlation: `requestId` feeds into `requestLogger` bindings
 - §3 Log levels: INFO / WARN / ERROR mapped by HTTP status range
-- §4 Admin log viewer: `/admin/logs` route, `logViewer` from forge
+- §4 Admin log viewer: `/admin/logs` route, `adminLogsController` with `readLogViewer`/`LogViewerContent` from forge
 - §5 No-PII rule: log only method, path, status, duration, requestId
 - §6 KV schema: JSON records keyed by timestamp prefix for range queries
 - §7 Local dev fallback: console-only when LOGS_KV binding absent
@@ -27,9 +27,9 @@ weight: 22
 
 ### 1a. Dual Channel Setup
 
-Both channels are configured at the `requestLogger` call site in `src/routes.tsx` (or the
-middleware composition layer). The channel factory receives the Hono context `c` so it can
-read bindings:
+Both channels are configured at the `requestLogger` call site in `src/app/middleware.ts`
+(the middleware composition layer). The channel factory receives the request context `c`
+so it can read bindings:
 
     requestLogger({
       channels: (c) =>
@@ -52,7 +52,7 @@ Declare the namespace in `wrangler.jsonc`:
     ]
 
 For local dev Wrangler auto-creates an in-memory KV namespace when the binding is declared.
-The `logViewer` route reads from this same namespace, so `/admin/logs` works locally without
+The `adminLogsController` reads from this same namespace via `readLogViewer`, so `/admin/logs` works locally without
 extra setup.
 
 ### 1c. AppEnv Typing
@@ -72,7 +72,7 @@ type throughout the codebase:
 ### 2a. Middleware Order: requestId Before requestLogger
 
 `requestId()` must be registered before `requestLogger` in the middleware chain.
-`requestId` sets `requestIdCtx` in the Hono context. `requestLogger` reads it via its
+`requestId` sets `requestIdCtx` in the request context. `requestLogger` reads it via its
 `bindings` factory so every log record carries the same ID as the originating request:
 
     app.use(requestId())
@@ -130,43 +130,42 @@ Additional fields from `bindings` are merged at the top level.
 
 ## 4. Admin Log Viewer
 
-### 4a. /admin/logs Route Declaration
+### 4a. /admin/logs Route Wiring
 
-    import { logViewer } from "@y-core/forge/logging"
-    import { logsView } from "./views/logs"
+    // src/routes.ts
+    import { route } from "@y-core/forge/router"
+    adminLogs: { method: "GET", pattern: "/admin/logs" }
 
-    route("/admin/logs", {
-      ...logViewer<AppEnv>({ kv: (c) => c.env.LOGS_KV }),
-      view: logsView as RouteView<AppEnv>,
+    // src/controllers/admin-logs.tsx
+    import { LogViewerContent, readLogViewer } from "@y-core/forge/logging/http"
+    import { definePage } from "@y-core/forge/app"
+    import { renderPage } from "@y-core/forge/render"
+    import { CoreIcon } from "@assets"
+
+    export const adminLogsController = definePage<AppEnv, AppConfig, LogViewerLoaderData>({
+      loader: (c) => readLogViewer(c, { kv: (cc) => cc.env.LOGS_KV!, basePath: routes.adminLogs.href() }),
+      view: async (c, config, state) => {
+        const ctx = await renderContext(c, config)
+        return renderPage(
+          <Layout ctx={ctx}><LogViewerContent data={state.data} icon={CoreIcon} /></Layout>
+        )
+      },
     })
 
-`logViewer` provides a `loader` that queries LOGS_KV with optional `?level=`, `?limit=`,
-and `?cursor=` query parameters for filter and cursor-based pagination.
+`readLogViewer` queries LOGS_KV with optional `?level=`, `?limit=`, and `?cursor=` query
+parameters for filter and cursor-based pagination. `LogViewerContent` from forge renders the
+log viewer UI. Both are imported from `@y-core/forge/logging/http`. There is no separate
+`logsView` component in the app.
 
-### 4b. logsView Component
-
-`logsView` wraps `LogTable` (from forge) in the app layout. `LogTable` renders the
-structured log records as an HTML table with sortable columns. Pass the layout context from
-the route loader:
-
-    export const logsView: RouteView<AppEnv> = (c, data) => (
-      htmlResponse(c.req.raw,
-        <Layout ctx={data.ctx}>
-          <LogTable records={data.records} cursor={data.cursor} />
-        </Layout>
-      )
-    )
-
-### 4c. TODO(auth) — Authentication Required
+### 4b. TODO(auth) — Authentication Required
 
 **The `/admin/logs` route currently has no authentication guard.** It must not be exposed
-in production without one. Add an auth middleware before the route handler:
+in production without one. Add an auth middleware to the action binding in `router.tsx`:
 
-    route("/admin/logs", {
+    adminLogs: {
       middleware: [requireAdminSession],
-      ...logViewer<AppEnv>({ kv: (c) => c.env.LOGS_KV }),
-      view: logsView as RouteView<AppEnv>,
-    })
+      handler: adminLogsController,
+    }
 
 Track this in the project backlog. Until auth is added, consider blocking the route at
 the Cloudflare Access layer or omitting it from the production bundle entirely.
@@ -178,7 +177,7 @@ the Cloudflare Access layer or omitting it from the production bundle entirely.
 ### 5a. What May Never Appear in a Log Record
 
 Log records stored in KV are accessible to anyone with KV read access, including future
-`logViewer` users. The following data must never appear in any log field:
+`/admin/logs` viewers. The following data must never appear in any log field:
 
 - Email addresses or usernames
 - Names or any personally identifiable strings

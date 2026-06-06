@@ -51,18 +51,18 @@ Fall back to `Grep` only for YAML, markdown, or when `tsmcp` unreachable.
 ### Layer Boundaries (enforced — no exceptions)
 
 **App-owned code layers:**
-- `src/app/` — config, context, middleware (config-layer code)
-- `src/routes.tsx` — route definitions (always add new routes here)
-- `src/handlers/` — loaders and actions (HTTP transport: parse → validate → service call → render/redirect)
+- `src/app/` — config, context, middleware (config-layer code); `render.ts` is the thin JSX→HtmlResponse bridge
+- `src/routes.ts` — route definitions via `get()`/`post()` path helpers (always add new routes here)
+- `src/controllers/` — controllers (HTTP transport): render handlers marshal data → `c.render(view)`; mutation handlers parse → validate → service call → render/redirect
 - `src/services/` — external integrations and business orchestration
-- `src/views/` — JSX view components
+- `src/views/` — JSX view components; page views own the `<Layout>` Slot
 - `src/model/` — domain types and schemas
 
 **Import rules by concern:**
-- Handlers import from `services/` and `model/` — never reach into other handlers
-- Services import from `model/` — never import from handlers, never import Hono context
-- Views import from `model/` — never import from services
-- Middleware imports from `app/` config — never from handlers or services
+- Controllers import from `services/`, `model/`, and `views/` — never reach into other controllers
+- Services import from `model/` — never import from controllers, never import request context
+- Views import from `model/` (and `views/layout`) — never import from services
+- Middleware imports from `app/` config — never from controllers or services
 
 **Shared library (`@y-core/forge`)**:
 - Reusable behavior lives in the external `@y-core/forge` package.

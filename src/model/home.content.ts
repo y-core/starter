@@ -1,10 +1,4 @@
-const foundingYear = 2015;
-
 export const content = {
-  title: "Forge Studio",
-  description:
-    "Forge Studio crafts digital products with purpose — from discovery through design to delivery, we build experiences that connect and endure.",
-
   hero: {
     headline: "We build digital products people actually want to use",
     subtext:
@@ -19,8 +13,6 @@ export const content = {
     trust: "All enquiries are handled with complete confidentiality.",
     contacts: [{ name: "Forge Studio", phone: "+1 (555) 012-3456", email: "hello@example.com" }],
   },
-
-  footer: { copyrightStart: foundingYear, entity: "Forge Studio" },
 } as const;
 
-export type SiteContent = typeof content;
+export type HomeContent = typeof content;

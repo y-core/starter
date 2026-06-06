@@ -24,10 +24,10 @@ weight: 25
 
 ## 1. app.request Pattern
 
-`app.request(path, init, env)` is the Hono-native equivalent of Go's `httptest.NewRecorder`. It
-bypasses the network entirely and drives the Worker app directly — no `wrangler dev` required. The
-third argument passes a mock environment satisfying `AppEnv` so bindings (KV, secrets, site key) are
-always under test control.
+`app.request(path, init, env)` is Forge's `request()` test helper — the equivalent of Go's
+`httptest.NewRecorder`. It bypasses the network entirely and drives the Worker app directly —
+no `wrangler dev` required. The third argument passes a mock environment satisfying `AppEnv`
+so bindings (KV, secrets, site key) are always under test control.
 
 ### 1a. Basic GET Test
 
@@ -39,8 +39,6 @@ always under test control.
       BASE_URL: "https://example.com",
       CSRF_SECRET: "de7bf4aef360e3a4c3254c9cec7e45d0f1fd98cc2219c62b5b07e826ba1bcc6e",
       EMAIL_API_KEY: "test-api-key",
-      EMAIL_FROM: "from@example.com",
-      EMAIL_TO: "to@example.com",
       TURNSTILE_SECRET_KEY: "test-ts-key",
       TURNSTILE_SITE_KEY: "test-site-key",
     }
@@ -54,9 +52,8 @@ always under test control.
 
 ### 1b. Tests Live in tests/
 
-    tests/worker.test.ts   — main GET routes + security headers
+    tests/worker.test.ts   — main GET routes, POST actions, security headers
     tests/routes.test.ts   — route configuration
-    tests/email.test.ts    — email service
     tests/setup.ts         — shared fixtures
 
 Unlike forge (co-located `*.test.ts` next to source), the starter keeps all tests in a dedicated
@@ -72,10 +69,9 @@ Each field is required unless noted. Missing bindings cause the middleware chain
 | `ASSETS` | `{ fetch: async () => Response }` — controls static-asset passthrough |
 | `BASE_URL` | Any `https://` URL; used for origin validation in guards |
 | `CSRF_SECRET` | 64 hex chars (32 bytes); must be a valid key for `importCsrfKey` |
-| `EMAIL_API_KEY` | Any string; stubbed in email tests via `globalThis.fetch` |
-| `EMAIL_FROM` / `EMAIL_TO` | Any strings |
+| `EMAIL_API_KEY` | Any string; email delivery is stubbed via `globalThis.fetch` |
 | `TURNSTILE_SECRET_KEY` / `TURNSTILE_SITE_KEY` | Any strings |
-| `LOGS_KV` | Optional — middleware degrades gracefully when absent |
+| `LOGS_KV` | Optional — logging middleware degrades gracefully when absent |
 | `RATE_LIMITER` | Optional — rate-limit middleware no-ops when absent |
 
 ---
@@ -152,7 +148,7 @@ Never assert `expect(text).toBe(fullPageSnapshot)` — nonce drift will break th
 
 ### 3c. HTML Entity Encoding
 
-Hono JSX escapes special characters. Test assertions must use the encoded forms. See
+The forge JSX runtime escapes special characters. Test assertions must use the encoded forms. See
 [PRODUCTION_RULES.md](./PRODUCTION_RULES.md) §6 for the full entity table.
 
     // CORRECT
@@ -327,7 +323,7 @@ Write explicit tests for each rejection path so regressions are caught before de
     }, MINIMUM_ENV)
     expect(res.status).toBe(403)
 
-### 6d. Filled Honeypot → 403
+### 6d. Filled Honeypot → 400
 
     const honeypotFormData = new URLSearchParams({
       __csrf: csrfToken,
@@ -346,7 +342,7 @@ Write explicit tests for each rejection path so regressions are caught before de
       },
       body: honeypotFormData.toString(),
     }, MINIMUM_ENV)
-    expect(res.status).toBe(403)
+    expect(res.status).toBe(400)  // honeypot returns 400; 403 is for guard failures
 
 ### 6e. Rule: No 200 on Guard Failure
 

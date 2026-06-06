@@ -33,14 +33,14 @@ Consequences:
   and never mutated.
 - Module-level **mutable state** is unsafe — a second request may reuse the same
   isolate instance, picking up stale mutations from the previous request.
-- Do not store per-request data in module scope. Use Hono's `c.set` / `c.get`.
+- Do not store per-request data in module scope. Use forge's typed `contextVar` accessors.
 
 ### 1b. Safe Module-Level Patterns
 
     // SAFE: computed once, never mutated
     export const securityHeaders = makeSecurityHeaders({ ... })
     export const configStore = new Config(appConfig, AppConfigSchema)
-    export const routes = defineRoutes([...])
+    export const routes = route({ health: { method: "GET", pattern: "/api/health" }, ... })
 
     // UNSAFE: per-request mutable state at module scope
     let currentUser: User | null = null  // do not do this
@@ -113,8 +113,8 @@ Exceeding the limit returns a `429 Too Many Requests` response via `rateLimitGua
 is absent (e.g., in `bun test` or local dev without the binding), the guard is skipped
 rather than throwing. This is intentional — do not flag it in code review.
 
-    // In routes.tsx middleware arrays:
-    middleware: [contactSecurityGuard, rateLimitGuard, csrfVerifyGuard]
+    // In router.tsx — contactGuards middleware composition:
+    createMiddleware(contactGuard, rateLimitGuard, csrfVerifyGuard)
 
 See [CODE_REVIEW.md §8](./CODE_REVIEW.md) for the valid-patterns table.
 
@@ -204,7 +204,7 @@ update the `<link>` and `<script>` references in `layout.tsx` to match.
 
 ### 5d. No Dynamic Asset Serving in Worker
 
-Do not add routes in `routes.tsx` that read and serve files from `public/`. Let
+Do not add routes in `routes.ts` that read and serve files from `public/`. Let
 Wrangler's static asset pipeline handle them. Dynamic serving from the Worker wastes
 CPU and bypasses edge caching.
 
@@ -222,7 +222,7 @@ CPU and bypasses edge caching.
 
 ### 6b. Accessing Bindings
 
-All bindings are available on `c.env` inside Hono route handlers:
+All bindings are available on `c.env` inside route handlers:
 
     const kv = c.env.LOGS_KV
     await kv.put("key", "value")

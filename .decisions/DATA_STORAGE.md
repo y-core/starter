@@ -43,18 +43,11 @@ log persistence is non-critical — see §5a for the full degradation policy.
 
 ### 1b. readLogs — Admin Log Viewer
 
-The `/admin/logs` route reads persisted log records via `readLogs` from
-`@y-core/forge/logging/http`. App code does not call `KVNamespace` methods directly
-for log retrieval — the forge helper handles pagination, key prefix filtering, and
-JSON deserialization:
-
-    import { readLogs } from "@y-core/forge/logging/http"
-
-    // Inside the /admin/logs handler:
-    const logs = await readLogs(c.env.LOGS_KV, { limit: 50 })
-
-The `src/views/logs.tsx` view renders the returned records. For the full logging
-architecture see [STRUCTURED_LOGGING.md](./STRUCTURED_LOGGING.md).
+The `/admin/logs` route is handled by `adminLogsController` in `src/controllers/admin-logs.tsx`.
+App code does not call `KVNamespace` methods directly for log retrieval —
+`readLogViewer` from `@y-core/forge/logging/http` handles pagination, key prefix filtering,
+and JSON deserialization. `LogViewerContent` renders the UI. For the full logging architecture
+see [STRUCTURED_LOGGING.md](./STRUCTURED_LOGGING.md).
 
 ### 1c. LOGS_KV Binding Declaration
 

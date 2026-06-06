@@ -19,7 +19,7 @@ Tests live in the `tests/` directory (not co-located with source):
 
 | Code under test | Test file location |
 |---|---|
-| `src/handlers/<name>.ts` | `tests/<name>.test.ts` |
+| `src/controllers/<name>.{ts,tsx}` | `tests/<name>.test.ts` |
 | `src/services/<name>.ts` | `tests/<name>.test.ts` |
 | `src/views/<name>.tsx` | `tests/<name>.test.ts` |
 | Route integration | `tests/routes.test.ts` |

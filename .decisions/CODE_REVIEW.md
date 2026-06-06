@@ -17,7 +17,7 @@ weight: 42
 ## 0. Quick Reference
 
 - §1 Review workflow: pre-review, during, output format
-- §2 Layer compliance: handlers/services/views/routes rules
+- §2 Layer compliance: controllers/services/views/routes rules
 - §3 Forge consumption: do not re-implement what forge provides
 - §4 Security: guards, CSRF, origin, no secrets in source
 - §5 Testing: app.request, security pass+fail, entity encoding
@@ -34,7 +34,7 @@ weight: 42
 Before examining diffs, establish a passing baseline:
 
 1. Run `bun run check` — if it fails before your changes, note that separately
-2. Read `src/routes.tsx` to identify new routes and their middleware arrays
+2. Read `src/routes.ts` to identify new routes, then `src/router.tsx` for their middleware arrays
 3. Read changed handler files to understand the intended data flow
 4. Identify which forge modules are imported vs. re-implemented
 
@@ -78,15 +78,17 @@ scope. Cross-layer coupling is a Major finding. See [ARCHITECTURE_GUIDE.md](./AR
 - [ ] Handler does NOT contain business logic (conditional behavior belongs in service)
 - [ ] Handler does NOT render full-page HTML — only fragments
 
-Example correct handler shape:
+Example correct handler shape (fragment/action handler):
 
-    export async function contactHandler(c: Context): Promise<Response> {
-      const fields = await readFields(c)
+    export async function contactHandler(context: RequestContext): Promise<Response> {
+      const c = context as AppContext
+      const formData = await parseFormData(c)
+      const fields = readFields(formData, ["name", "email", "message"] as const)
       const result = v.safeParse(ContactSchema, fields)
-      if (!result.success) return renderValidationErrors(c, result.issues)
+      if (!result.success) return fragmentResponse(renderValidationErrors(result.errors), 422)
 
       await contactService.send(result.output)
-      return renderSuccess(c, <ContactSuccessFragment />)
+      return fragmentResponse(renderSuccess("Message sent!"))
     }
 
 ### 2b. Service Layer Rules
@@ -101,13 +103,13 @@ Example correct handler shape:
 - [ ] Views render JSX only — no service calls, no DB access, no validation
 - [ ] Views use forge UI components (`Form`, `Field`, `Input`, `Alert`, `Button`, etc.)
 - [ ] Views receive all dynamic data via props (`RenderContext` + domain data structs)
-- [ ] Views do NOT import from `src/handlers/` or `src/services/`
+- [ ] Views do NOT import from `src/controllers/` or `src/services/` (importing `views/layout` is allowed)
 
 ### 2d. Routes Layer Rules
 
-- [ ] All routes defined in `src/routes.tsx` — never inline in `worker.ts`
-- [ ] POST routes include `csrfVerifyGuard` in their `middleware` array
-- [ ] HTMX-only POST routes include an HTMX origin/header guard (e.g., `contactSecurityGuard`)
+- [ ] Route entries in `src/routes.ts`; handler bindings in `src/router.tsx` — never inline in `worker.ts`
+- [ ] POST routes include `csrfVerifyGuard` in their middleware array in `router.tsx`
+- [ ] HTMX-only POST routes include an HTMX origin/header guard (e.g., `contactGuard`)
 - [ ] Auth-protected routes include auth middleware or a `// TODO(auth)` comment
 - [ ] Guard ordering: origin/HTMX check → rate limit → CSRF verify (see §4b)
 
@@ -128,7 +130,7 @@ check what `@y-core/forge` exports before writing new utility code.
 | Fragment success/error responses | `renderError`, `renderSuccess` from `@y-core/forge/http` |
 | Validation schema and parse | `v` from `@y-core/forge/validation` |
 | Form field reading | `readFields` from `@y-core/forge/form` |
-| Structured logging | `kvLogChannel`, `createLogger` from `@y-core/forge/logging` |
+| Structured logging | `kvLogChannel`, `createLogger` from `@y-core/forge/logging`; log viewer from `@y-core/forge/logging/http` |
 | Theme toggle script | `FOUC_SCRIPT`, `mountTheme`, `DARK_CLASS` from `@y-core/forge/ui/client` |
 
 If a handler manually builds a `Content-Type: text/html` response instead of using
@@ -139,9 +141,8 @@ If a handler manually builds a `Content-Type: text/html` response instead of usi
 Forge exports are namespaced. Flag any import that bypasses the forge namespace:
 
 - [ ] Forge imports use `@y-core/forge/{namespace}` — not direct package paths
-- [ ] No direct `hono` imports for utilities forge re-exports
 - [ ] No direct `valibot` imports — use `v` from `@y-core/forge/validation`
-- [ ] No `@remix-run/headers` or similar in app code
+- [ ] No direct `@remix-run/*` imports in app code — consume only via `@y-core/forge` re-exports
 
 Example of a flaggable import:
 
@@ -167,9 +168,9 @@ Security findings are Critical or Major by default. See §6 for calibration.
 
 The contact form route requires three guards in strict order:
 
-    middleware: [contactSecurityGuard, rateLimitGuard, csrfVerifyGuard]
+    middleware: [contactGuard, rateLimitGuard, csrfVerifyGuard]
 
-- `contactSecurityGuard` — checks `HX-Request: true` and validates the `Origin` header
+- `contactGuard` — checks `HX-Request: true` and validates the `Origin` header
 - `rateLimitGuard` — enforces 5 req/60s per IP (skipped if binding absent)
 - `csrfVerifyGuard` — validates the `__csrf` token from the form body
 
@@ -198,7 +199,7 @@ that is Critical (missing CSRF) or Major (missing origin/rate limit check).
 
 ## 5. Testing Checklist
 
-Tests live in `tests/` (one file per feature area) and use `app.request` to drive the Hono app
+Tests live in `tests/` (one file per feature area) and use `app.request` to drive the Forge app
 directly without a network stack. See [HANDLER_TESTING.md](./HANDLER_TESTING.md).
 
 ### 5a. Coverage Requirements
@@ -263,7 +264,7 @@ Applied to findings that violate architecture boundaries or weaken security:
 
 - Handler calling an external API directly (should delegate to service)
 - View containing business logic or service calls
-- New route defined outside `routes.tsx`
+- New route defined outside `routes.ts` / `router.tsx`
 - Re-implementing a utility that forge already exports
 - Missing fail-case security test for a guarded route
 - Wrong guard order on a POST route middleware array
@@ -295,8 +296,8 @@ Suggestions that do not represent errors:
 
 1. Read the **full function**, not just the flagged line — surrounding guards or
    validation may already address the concern
-2. Check `routes.tsx` middleware array before claiming a guard is missing — the guard
-   may be registered at the route level rather than inside the handler
+2. Check `router.tsx` action binding in `createController` before claiming a guard is missing —
+   the guard may be in the middleware array rather than inside the handler
 3. Run `bun run check` to distinguish type errors from style issues
 4. Search for the forge export with `rg "@y-core/forge"` before claiming something
    is re-implemented — it may be used elsewhere in the file
@@ -318,7 +319,7 @@ The following patterns appear unusual but are intentional. Do not report them.
 | Pattern | Why valid |
 |---|---|
 | `required: false` in `rateLimitGuard` | Intentional graceful degradation — binding absent in `bun test` |
-| `logsView` cast to `RouteView` in routes.tsx | `LogViewerLoaderData` is more specific than the generic slot type |
+| `renderPage(node, init?)` called directly in `view` without a context arg | `renderPage` from `@y-core/forge/render` is a standalone function — no middleware install required |
 | `// TODO(auth)` comment on `/admin/logs` | Known gap, documented, pending auth integration |
 | `MINIMUM_ENV` without `LOGS_KV` in tests | KV logging gracefully degrades when binding is absent |
 | `mergeSecurityHeaders` in `worker.dev.ts` | Intentional dev/prod CSP split — live-reload hash must not leak to prod |

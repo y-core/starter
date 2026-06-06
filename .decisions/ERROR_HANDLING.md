@@ -1,6 +1,6 @@
 ---
 title: "Error Handling"
-description: "renderError, renderSuccess, renderValidationErrors, htmlResponse, HTMX fragment, fail-closed, 503 service unavailable, contactSecurityGuard 403, error taxonomy, expected unexpected infrastructure"
+description: "renderError, renderSuccess, renderValidationErrors, htmlResponse, HTMX fragment, fail-closed, 503 service unavailable, contactGuard 403, error taxonomy, expected unexpected infrastructure"
 weight: 23
 ---
 
@@ -20,7 +20,7 @@ weight: 23
 - §4 Error taxonomy: expected, unexpected, infrastructure — distinct handling paths
 - §5 HTMX target pattern: result `<div>` receives fragment swaps via `outerHTML`
 - §6 Status codes: 4xx for client errors, 5xx for service failures
-- §7 Hono global error handler: catches unhandled throws, returns 500
+- §7 forge error boundary: catches unhandled throws, returns 500 (fail-closed by construction)
 
 ---
 
@@ -74,22 +74,34 @@ See [INPUT_VALIDATION.md](./INPUT_VALIDATION.md) §1b for the full parse flow.
 
 ---
 
-## 2. htmlResponse
+## 2. Full-Page Rendering via renderPage
 
-### 2a. Full-Page Response for Loader Views
+### 2a. renderPage for Full-Page Handler Views
 
-`htmlResponse` is not a fragment renderer — it wraps an entire JSX tree into a full HTTP
-response for page-level routes. Handlers that serve full page loads (GET routes, loaders)
-use it exclusively:
+`renderPage` from `@y-core/forge/render` converts a JSX tree to an `HtmlResponse`. It is
+called inside the `view` function of a `definePage` controller:
 
-    import { htmlResponse } from "@y-core/forge/http"
+    // In a full-page controller (src/controllers/home.tsx):
+    import { renderPage } from "@y-core/forge/render"
 
-    return htmlResponse(c.req.raw, <Layout ctx={ctx}><Home content={content} /></Layout>)
+    handler: definePage<AppEnv, AppConfig, HomeData>({
+      cache: "no-store",
+      loader: async (c, config) => ({
+        ctx: await renderContext(c, config, routes.contact.href()),
+        content,
+      }),
+      view: (_c, _cfg, state) =>
+        renderPage(<HomeView ctx={state.data.ctx} content={state.data.content} />),
+    })
 
-### 2b. Never Mix htmlResponse with HTMX Fragment Routes
+The `<Layout>` is composed by the view (`HomeView` returns `<Layout ctx={ctx}>…</Layout>`).
+`renderPage(node, init?)` accepts an optional `init` for status code overrides (e.g. 404).
 
-Action handlers (POST routes that HTMX calls) must return fragment renderers, not
-`htmlResponse`. Returning a full HTML page to an HTMX swap target produces broken UI.
+### 2b. Never Mix renderPage with HTMX Fragment Routes
+
+Action handlers (POST routes that HTMX calls) must return fragment renderers via
+`fragmentResponse`, not `renderPage`. Returning a full HTML page to an HTMX swap target
+produces broken UI.
 
 ---
 
@@ -97,11 +109,11 @@ Action handlers (POST routes that HTMX calls) must return fragment renderers, no
 
 ### 3a. Guards Reject Immediately
 
-Every security guard (`contactSecurityGuard`, `csrfVerifyGuard`, honeypot check) returns
+Every security guard (`contactGuard`, `csrfVerifyGuard`, honeypot check) returns
 an error response on any check failure. There is no fallback, retry, or silent skip path.
 If the guard cannot confirm validity, it rejects:
 
-    const guardResult = await contactSecurityGuard(c, formData, config)
+    const guardResult = await contactGuard(c, formData, config)
     if (!guardResult.ok) return guardResult.response
 
 The pattern is intentional: partial guard execution that silently continues would be a
@@ -120,7 +132,7 @@ following is prohibited:
       // continue anyway
     }
 
-If verification throws unexpectedly, let it propagate to the Hono global error handler
+If verification throws unexpectedly, let it propagate to forge's error boundary
 (§7) which returns 500. A failed CAPTCHA check is better exposed as a 500 than silently
 bypassed.
 
@@ -154,9 +166,9 @@ never occur in correct operation.
 
 Examples: `TypeError`, `ReferenceError`, `null` dereference, assertion failure.
 
-Handling: let them propagate unhandled. Hono's global error handler catches them and
-returns HTTP 500. These are logged at ERROR level with a stack trace. Fix them; do not
-handle them defensively in application code.
+Handling: let them propagate unhandled. forge's error boundary catches them and
+returns HTTP 500 (fail-closed, never exposes internals). These are logged at ERROR level
+with a stack trace. Fix them; do not handle them defensively in application code.
 
 ### 4c. Infrastructure Errors — External Service Failures
 
@@ -213,20 +225,25 @@ rule.
 
 ---
 
-## 6. Hono Global Error Handler
+## 6. forge Error Boundary
 
 ### 6a. Catch-All for Unhandled Throws
 
-Hono registers a global `onError` handler. Any exception that escapes a route handler
-flows here and returns HTTP 500. Configure it in `src/worker.ts` to log the error before
-responding:
+`createApp` registers a fail-closed error boundary. Any exception that escapes a route
+handler flows here and returns HTTP 500 with a generic HTML body — no stack trace,
+no internal detail. Pass `isDebug: (c) => config.site.debug` to `createApp` to enable
+verbose error details in development:
 
-    app.onError((err, c) => {
-      // Log err.message and stack with requestId
-      return c.text("Internal Server Error", 500)
+    const app = createApp<AppEnv>({
+      config: configStore,
+      isDebug: (c) => configStore.get(c.env).site.debug,
     })
+
+When `isDebug` returns `true` the error boundary includes the error message in the
+response for debugging. In production, `isDebug` must return `false` (or be omitted).
 
 ### 6b. Never Return Stack Traces to Clients
 
-The 500 response body must never include a stack trace, error message, or any internal
-detail. Return a plain static string. Full error details go to the log channel only.
+The 500 response must never include a stack trace, error message, or any internal detail
+in production. The forge error boundary enforces this by default. Log full error details
+via `requestLog` to the log channel only.

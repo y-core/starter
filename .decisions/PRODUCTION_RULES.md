@@ -33,7 +33,7 @@ weight: 20
 
 ### 1a. Config via configStore.get(c.env)
 
-Config is loaded per-request from Hono context bindings. Module-level variables that
+Config is loaded per-request from Workers env bindings. Module-level variables that
 depend on environment are forbidden because Workers may share a module instance across
 multiple requests with different bindings.
 
@@ -41,14 +41,14 @@ multiple requests with different bindings.
     const config = loadConfig(process.env)
     const apiKey = process.env.EMAIL_API_KEY
 
-    // GOOD: per-request via Hono context
+    // GOOD: per-request via AppContext
     const config = configStore.get(c.env)
     const apiKey = config.services.email.apiKey
 
 ### 1b. No Request-Scoped Module Variables
 
-Variables that change per request must live in Hono context (`c.set`/`c.get`) or in a
-`contextVar`. Examples of what must NOT be module-level:
+Variables that change per request must be stored via a typed `contextVar` accessor.
+Examples of what must NOT be module-level:
 
 - Request IDs, nonces, CSRF tokens
 - Resolved config values
@@ -68,7 +68,7 @@ The test: if its value would differ between two simultaneous requests, it is not
 Validation belongs at the HTTP boundary — the handler. Services receive already-validated
 domain types and do not call `v.safeParse` internally.
 
-    // In handler (src/handlers/contact.ts):
+    // In controller (src/controllers/contact.ts):
     const fields = readFields(formData, ["name", "email", "message"] as const)
     const parsed = v.safeParse(ContactSchema, fields, { abortEarly: true })
     if (!parsed.success) return renderValidationErrors(c, parsed.issues)
@@ -105,11 +105,11 @@ that must never be reimplemented in app code:
 
 | Concern | Forge export |
 |---|---|
-| CSRF mint/verify | `@y-core/forge/security` `mintCsrf`, `csrfProtection` |
+| CSRF mint/verify | `@y-core/forge/form` `mintCsrf`, `csrfProtection` |
 | Security headers + nonce | `@y-core/forge/security` `makeSecurityHeaders`, `getNonce` |
-| HTML escaping | Hono JSX auto-escapes; never call custom escape functions |
-| Fragment renderers | `@y-core/forge/hono` helpers |
-| Rate limiting | `@y-core/forge/cloudflare` `rateLimit` |
+| HTML escaping | forge JSX auto-escapes; never call custom escape functions |
+| Fragment renderers | `@y-core/forge/http` `renderSuccess`, `renderError`, `renderValidationErrors` |
+| Rate limiting | `@y-core/forge/security` `rateLimit` |
 | Origin verification | `@y-core/forge/security` `verifyOrigin` |
 
 ### 3b. Zero Duplication Policy
@@ -187,15 +187,15 @@ allowed in test files only.
 
 ## 6. HTML Entity Exact-Match Rule
 
-### 6a. Hono JSX Encodes Entities
+### 6a. forge JSX Encodes Entities
 
-Hono JSX auto-escapes string values inserted into JSX. Test assertions must match the
-encoded form, not the raw source string.
+The forge JSX runtime auto-escapes string values inserted into JSX. Test assertions must
+match the encoded form, not the raw source string.
 
     // BAD: raw string — will never match rendered HTML
     expect(text).toContain("O'Brien")
 
-    // GOOD: encoded as Hono JSX renders it
+    // GOOD: encoded as forge JSX renders it
     expect(text).toContain("O&#39;Brien")
 
 Common encodings: `'` → `&#39;`, `"` → `&#34;`, `&` → `&amp;`, `<` → `&lt;`, `>` → `&gt;`.
