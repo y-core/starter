@@ -1,4 +1,4 @@
-/** @jsxImportSource @y-core/forge */
+/** @jsxImportSource @y-core/forge/jsx */
 
 import { assets, CoreIcon } from "@assets";
 import { rawHtml } from "@y-core/forge/http";

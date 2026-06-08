@@ -1,4 +1,4 @@
-/** @jsxImportSource @y-core/forge */
+/** @jsxImportSource @y-core/forge/jsx */
 
 import { CoreIcon } from "@assets";
 import { Field, Form, Input, Textarea } from "@y-core/forge/ui";

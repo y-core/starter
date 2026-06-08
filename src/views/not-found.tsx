@@ -1,4 +1,4 @@
-/** @jsxImportSource @y-core/forge */
+/** @jsxImportSource @y-core/forge/jsx */
 import type { RenderContext } from "../app/context";
 import { routes } from "../routes";
 import { Layout } from "./layout";

@@ -1,5 +1,5 @@
 /* eslint-disable */
-// Runtime types generated with workerd@1.20260529.1 2026-05-14 
+// Runtime types generated with workerd@1.20260603.1 2026-05-14 
 // Begin runtime types
 /*! *****************************************************************************
 Copyright (c) Cloudflare. All rights reserved.
@@ -11252,6 +11252,22 @@ interface RequestInitCfPropertiesImageDraw extends BasicImageTransformations {
      */
     repeat?: true | "x" | "y";
     /**
+     * How to combine the foreground and backdrop pixels to create the result
+     */
+    composite?: 
+    /** Foreground drawn on top of backdrop (default) */
+    'over'
+    /** Foreground shown only where backdrop is opaque */
+     | 'in'
+    /** Foreground drawn on top, but clipped to the backdrop's shape */
+     | 'atop'
+    /** Foreground shown only where backdrop is transparent */
+     | 'out'
+    /** Foreground and backdrop visible only where the other is not */
+     | 'xor'
+    /** Foreground and backdrop channels added (brightening) */
+     | 'lighter';
+    /**
      * Position of the overlay image relative to a given edge. Each property is
      * an offset in pixels. 0 aligns exactly to the edge. For example, left: 10
      * positions left side of the overlay 10 pixels from the left edge of the
@@ -11788,6 +11804,32 @@ interface IncomingRequestCfPropertiesTLSClientAuth {
      * @example "Dec 22 19:39:00 2018 GMT"
      */
     certNotAfter: string;
+    /**
+     * The client leaf certificate in [RFC 9440](https://www.rfc-editor.org/rfc/rfc9440)
+     * format (`:base64-DER:`). Empty if no client certificate was presented or if
+     * the leaf certificate exceeded 10 KB (see {@link certRFC9440TooLarge}).
+     *
+     * Suitable for forwarding to an origin via the `Client-Cert` HTTP header.
+     */
+    certRFC9440: string;
+    /**
+     * `true` if the leaf certificate exceeded 10 KB and was omitted from
+     * {@link certRFC9440}.
+     */
+    certRFC9440TooLarge: boolean;
+    /**
+     * The intermediate certificate chain in [RFC 9440](https://www.rfc-editor.org/rfc/rfc9440)
+     * format as a comma-separated list. Empty if no intermediates were sent or
+     * if the chain exceeded 16 KB (see {@link certChainRFC9440TooLarge}).
+     *
+     * Suitable for forwarding to an origin via the `Client-Cert-Chain` HTTP header.
+     */
+    certChainRFC9440: string;
+    /**
+     * `true` if the intermediate chain exceeded 16 KB and was omitted from
+     * {@link certChainRFC9440}.
+     */
+    certChainRFC9440TooLarge: boolean;
 }
 /** Placeholder values for TLS Client Authorization */
 interface IncomingRequestCfPropertiesTLSClientAuthPlaceholder {
@@ -11808,6 +11850,10 @@ interface IncomingRequestCfPropertiesTLSClientAuthPlaceholder {
     certFingerprintSHA256: "";
     certNotBefore: "";
     certNotAfter: "";
+    certRFC9440: "";
+    certRFC9440TooLarge: false;
+    certChainRFC9440: "";
+    certChainRFC9440TooLarge: false;
 }
 /** Possible outcomes of TLS verification */
 declare type CertVerificationStatus = 
@@ -12262,11 +12308,25 @@ type ImageTransform = {
 type ImageDrawOptions = {
     opacity?: number;
     repeat?: boolean | string;
+    composite?: ImageCompositeMode;
     top?: number;
     left?: number;
     bottom?: number;
     right?: number;
 };
+type ImageCompositeMode = 
+/** Foreground drawn on top of backdrop (default) */
+'over'
+/** Foreground shown only where backdrop is opaque */
+ | 'in'
+/** Foreground drawn on top, but clipped to the backdrop's shape */
+ | 'atop'
+/** Foreground shown only where backdrop is transparent */
+ | 'out'
+/** Foreground and backdrop visible only where the other is not */
+ | 'xor'
+/** Foreground and backdrop channels added (brightening) */
+ | 'lighter';
 type ImageInputOptions = {
     encoding?: 'base64';
 };

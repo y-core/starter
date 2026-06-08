@@ -55,7 +55,7 @@ bun run test          # tests
 
 **Controllers:** `src/controllers/*.{ts,tsx}` — plain controller modules (`{ middleware, handler }` or a bare handler). GET handlers use `definePage({ loader, view })` from `@y-core/forge/app`; the `view` calls `renderPage()` from `@y-core/forge/render`. Mutation handlers return `fragmentResponse` with forge fragment helpers. `health` stays inline in `router.tsx`; `adminLogs` is its own controller module.
 
-**Views:** `src/views/*.tsx` — forge JSX components (`@jsxImportSource @y-core/forge`; NOT Hugo templates). Page views own their `<Layout>` composition (the `children` Slot); `renderPage()` from `@y-core/forge/render` converts JSX to an `HtmlResponse`.
+**Views:** `src/views/*.tsx` — forge JSX components (`@jsxImportSource @y-core/forge/jsx`; NOT Hugo templates). Page views own their `<Layout>` composition (the `children` Slot); `renderPage()` from `@y-core/forge/render` converts JSX to an `HtmlResponse`.
 
 **Services:** `src/services/` — external integrations (email, etc.).
 

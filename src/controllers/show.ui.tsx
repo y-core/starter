@@ -1,4 +1,4 @@
-/** @jsxImportSource @y-core/forge */
+/** @jsxImportSource @y-core/forge/jsx */
 import { CoreIcon } from "@assets";
 import { definePage } from "@y-core/forge/app";
 import { renderPage } from "@y-core/forge/render";

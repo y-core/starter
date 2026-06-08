@@ -18,6 +18,7 @@ export const securityHeaders: SecurityHeadersOptions = {
   scriptSrc: ["'self'", NONCE, CONFIG.TURNSTILE_CSP],
   connectSrc: ["'self'", CONFIG.TURNSTILE_CSP],
   frameSrc: ["'self'", CONFIG.TURNSTILE_CSP],
+  permissionsPolicy: { microphone: ["self"] },
 };
 
 export const AppConfigSchema = v.object({

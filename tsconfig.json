@@ -15,37 +15,9 @@
     "skipLibCheck": true,
     "types": [],
     "jsx": "react-jsx",
-    "jsxImportSource": "@y-core/forge",
-    // the paths is simply a editor workaround for host editing
+    "jsxImportSource": "@y-core/forge/jsx",
     "paths": {
-      // fetch-router is a forge dep — point TypeScript at forge's node_modules for module augmentation
-      "@remix-run/fetch-router": [
-        "../forge/node_modules/@remix-run/fetch-router/dist/index.d.ts"
-      ],
-      // Exact overrides for paths that don't follow the */mod.ts convention
-      "@y-core/forge/ui/show/client": [
-        "../forge/src/ui/show/client.ts", // docker
-        "../../y-core/forge/src/ui/show/client.ts" // host
-      ],
-      "@y-core/forge/render": [
-        "../forge/src/jsx/render-to-string.ts", // docker
-        "../../y-core/forge/src/jsx/render-to-string.ts" // host
-      ],
-      "@y-core/forge/jsx-runtime": [
-        "../forge/src/jsx/jsx-runtime.ts", // docker
-        "../../y-core/forge/src/jsx/jsx-runtime.ts" // host
-      ],
-      "@y-core/forge/jsx-dev-runtime": [
-        "../forge/src/jsx/jsx-dev-runtime.ts", // docker
-        "../../y-core/forge/src/jsx/jsx-dev-runtime.ts" // host
-      ],
-      "@y-core/forge/*": [
-        "../forge/src/*/mod.ts", // docker
-        "../../y-core/forge/src/*/mod.ts" // host
-      ],
-      "@assets": [
-        "./.forge/assets.ts"
-      ]
+      "@assets": ["./.forge/assets.ts"]
     }
   },
   "include": [
