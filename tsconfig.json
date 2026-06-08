@@ -23,6 +23,10 @@
         "../forge/node_modules/@remix-run/fetch-router/dist/index.d.ts"
       ],
       // Exact overrides for paths that don't follow the */mod.ts convention
+      "@y-core/forge/ui/show/client": [
+        "../forge/src/ui/show/client.ts", // docker
+        "../../y-core/forge/src/ui/show/client.ts" // host
+      ],
       "@y-core/forge/render": [
         "../forge/src/jsx/render-to-string.ts", // docker
         "../../y-core/forge/src/jsx/render-to-string.ts" // host

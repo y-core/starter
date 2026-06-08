@@ -185,7 +185,7 @@ that is Critical (missing CSRF) or Major (missing origin/rate limit check).
 
 - [ ] Every inline `<script>` carries `nonce={ctx.nonce}`
 - [ ] Every external `<script src="...">` carries `nonce={ctx.nonce}`
-- [ ] `FOUC_SCRIPT` uses `dangerouslySetInnerHTML` + nonce (valid — see §8)
+- [ ] `FOUC_SCRIPT` is injected with `rawHtml()` + nonce (valid — see §8)
 - [ ] The Wrangler live-reload hash appears only in `worker.dev.ts`, not `worker.ts`
 - [ ] `mergeSecurityHeaders` is used in `worker.dev.ts` to layer the dev hash onto prod CSP
 
@@ -323,6 +323,6 @@ The following patterns appear unusual but are intentional. Do not report them.
 | `// TODO(auth)` comment on `/admin/logs` | Known gap, documented, pending auth integration |
 | `MINIMUM_ENV` without `LOGS_KV` in tests | KV logging gracefully degrades when binding is absent |
 | `mergeSecurityHeaders` in `worker.dev.ts` | Intentional dev/prod CSP split — live-reload hash must not leak to prod |
-| `dangerouslySetInnerHTML` for `FOUC_SCRIPT` | Intentional synchronous inline script required for FOUC prevention |
+| `rawHtml()` for `FOUC_SCRIPT` | Intentional synchronous inline script required for FOUC prevention |
 | `tsconfig.json` paths alias for `@y-core/forge/*` | Zed editor workaround — governs `tsgo` resolution, not runtime |
 | `"types": []` in tsconfig | Global scope uses no `@types/*`; Workers types come from generated `.types/` |

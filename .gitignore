@@ -1,6 +1,7 @@
 .DS_Store
 
 .codex
+.claude/scheduled_tasks.lock
 
 .dev.vars
 .env

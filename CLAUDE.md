@@ -47,7 +47,7 @@ bun run test          # tests
 
 ## Architecture
 
-**Entry:** `src/worker.ts` exports `createWorker(security: SecurityHeadersOptions)` — a factory that calls `createApp`, `applyMiddleware` (security headers, requestId, logging, CORS), `app.map(routes, controller)`, and `applyAssets`. Its default export is the production app (base CSP: `['self', NONCE, TURNSTILE_CSP]`).
+**Entry:** `src/worker.ts` exports `createWorker(security: SecurityHeadersOptions)` — a factory that calls `createApp`, `registerMiddleware` (security headers, requestId, logging, CORS), `app.map(routes, controller)`, and `applyAssets`. Its default export is the production app (base CSP: `['self', NONCE, TURNSTILE_CSP]`).
 
 **Dev entry:** `src/worker.dev.ts` — default-exports `createWorker(mergeSecurityHeaders(securityHeaders, { scriptSrc: [WRANGLER_LIVE_RELOAD_HASH] }))`. Layers the Wrangler live-reload inline-script hash onto the prod CSP for `wrangler dev --live-reload`. The reload hash is deliberately kept out of the production CSP so it cannot leak by construction.
 

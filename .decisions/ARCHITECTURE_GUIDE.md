@@ -34,7 +34,7 @@ weight: 15
 
     export function createWorker(security: SecurityHeadersOptions) {
       const app = createApp<AppEnv>({ config: configStore, isDebug: (c) => configStore.get(c.env).site.debug })
-      applyMiddleware(app, security)
+      registerMiddleware(app, security)
       app.map(routes, controller)
       applyAssets(app, { notFoundView: notFoundController })
       return app
@@ -50,7 +50,7 @@ live-reload hash on top via `mergeSecurityHeaders`.
 The four steps inside the factory execute in a fixed order:
 
 1. `createApp` — Forge app with Config integration and debug mode flag
-2. `applyMiddleware` — security headers, request ID, logger, CORS for `/api/*`
+2. `registerMiddleware` — security headers, request ID, logger, CORS for `/api/*`
 3. `app.map(routes, controller)` — mounts routes from `src/routes.ts` + handlers from `src/router.tsx`
 4. `applyAssets` — static asset serving and 404 handler
 
@@ -78,7 +78,7 @@ The dev entry (`src/worker.dev.ts`) is passed as the positional argument to
     src/app/
       config.ts            ← AppConfigSchema, configStore, securityHeaders
       context.ts           ← AppEnv, AppContext, RenderContext, renderContext()
-      middleware.ts        ← applyMiddleware(), route guard sentinels (rateLimitGuard, csrfVerifyGuard)
+      middleware.ts        ← registerMiddleware(), route guard sentinels (rateLimitGuard, csrfVerifyGuard)
     src/routes.ts          ← declarative route map (route({ home: get("/"), … }))
     src/router.tsx         ← createController binding (controller/middleware mapping)
     src/controllers/       ← plain controllers (definePage handlers + HTMX mutation handlers)

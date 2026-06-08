@@ -44,6 +44,7 @@ export async function handleContact(context: RequestContext): Promise<Response> 
   const turnstileResult = await verifyTurnstile(
     formData,
     config.services.turnstile.secretKey,
+    { expectedHostname: config.site.url.hostname },
     "cf-turnstile-response",
     c.request.headers.get("CF-Connecting-IP") ?? undefined,
   );

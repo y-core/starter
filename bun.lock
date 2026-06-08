@@ -4,7 +4,7 @@
     "": {
       "name": "forge-starter",
       "dependencies": {
-        "@y-core/forge": "github:y-core/forge#v0.0.23",
+        "@y-core/forge": "github:y-core/forge#v0.0.25",
       },
       "devDependencies": {
         "@biomejs/biome": "^2.4.16",
@@ -270,7 +270,7 @@
 
     "@typescript/native-preview-win32-x64": ["@typescript/native-preview-win32-x64@7.0.0-dev.20260602.1", "", { "os": "win32", "cpu": "x64" }, "sha512-ENQpKND75VD7WgtGwj1xXpOQKBM0bmjtzC4W9rzxJjInYfbu22VOXnfzEZlb7fmo/EnyZL6QF6P/zx4ojRMX9Q=="],
 
-    "@y-core/forge": ["@y-core/forge@github:y-core/forge#ce404fe", { "dependencies": { "@remix-run/cookie": "^0.5.4", "@remix-run/fetch-router": "^0.20.0", "@remix-run/headers": "^0.21.1", "@remix-run/html-template": "^0.3.1", "@remix-run/response": "^0.3.6", "@remix-run/route-pattern": "^0.22.1", "@remix-run/session": "^0.4.2", "htmx.org": "^2.0.10", "valibot": "^1.4.1" }, "peerDependencies": { "esbuild": ">=0.20.0", "sharp": "latest" }, "optionalPeers": ["esbuild", "sharp"] }, "y-core-forge-ce404fe"],
+    "@y-core/forge": ["@y-core/forge@github:y-core/forge#f98587c", { "dependencies": { "@remix-run/cookie": "^0.5.4", "@remix-run/fetch-router": "^0.20.0", "@remix-run/headers": "^0.21.1", "@remix-run/html-template": "^0.3.1", "@remix-run/response": "^0.3.6", "@remix-run/route-pattern": "^0.22.1", "@remix-run/session": "^0.4.2", "htmx.org": "^2.0.10", "valibot": "^1.4.1" }, "peerDependencies": { "esbuild": ">=0.20.0", "sharp": "latest" }, "optionalPeers": ["esbuild", "sharp"] }, "y-core-forge-f98587c"],
 
     "blake3-wasm": ["blake3-wasm@2.1.5", "", {}, "sha512-F1+K8EbfOZE49dtoPtmxUQrpXaBIl3ICvasLh+nJta0xkz+9kF/7uet9fLnwKqhDrmj6g+6K3Tw9yQPUg2ka5g=="],
 

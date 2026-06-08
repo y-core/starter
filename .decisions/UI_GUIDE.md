@@ -43,7 +43,7 @@ deferred client scripts. All inline scripts carry `nonce={ctx.nonce}`. `Layout` 
             <meta name="viewport" content="width=device-width, initial-scale=1" />
             <title>{site.title}</title>
             {/* FOUC_SCRIPT before stylesheet — sets data-theme-preference synchronously */}
-            <script nonce={nonce} dangerouslySetInnerHTML={{ __html: FOUC_SCRIPT }} />
+            <script nonce={nonce}>{rawHtml(FOUC_SCRIPT)}</script>
             <link rel="stylesheet" href={assets.path("css/main.css")} />
             <script nonce={nonce} src={assets.path("js/main.js")} type="module" />
           </head>
@@ -95,11 +95,11 @@ satisfy the CSP nonce policy enforced by `makeSecurityHeaders`. Omitting the non
 causes the browser to block script execution in production.
 
     {/* Correct */}
-    <script nonce={ctx.nonce} dangerouslySetInnerHTML={{ __html: FOUC_SCRIPT }} />
+    <script nonce={ctx.nonce}>{rawHtml(FOUC_SCRIPT)}</script>
     <script defer src="/assets/js/main.js" nonce={ctx.nonce} />
 
     {/* Wrong — missing nonce, will be blocked by CSP */}
-    <script dangerouslySetInnerHTML={{ __html: FOUC_SCRIPT }} />
+    <script>{rawHtml(FOUC_SCRIPT)}</script>
 
 See [MIDDLEWARE_AND_CONTEXT.md](./MIDDLEWARE_AND_CONTEXT.md) for how `ctx.nonce` is
 generated per-request.
@@ -114,7 +114,7 @@ Import from forge:
 
     import { FOUC_SCRIPT } from "@y-core/forge/ui/client"
 
-Because the script runs inline, it requires `dangerouslySetInnerHTML` — this is a
+Because the script runs inline, it is injected with `rawHtml(FOUC_SCRIPT)` — this is a
 known-valid pattern. See [CODE_REVIEW.md §8](./CODE_REVIEW.md) for why it is not flagged.
 
 ### 2c. Deferred Scripts and Mount Functions
@@ -292,9 +292,10 @@ Import `FOUC_SCRIPT` from the forge client module and render it as the **first**
 `<script>` in `<head>`, before any stylesheets:
 
     import { FOUC_SCRIPT } from "@y-core/forge/ui/client"
+    import { rawHtml } from "@y-core/forge/http"
 
     // In Layout <head>:
-    <script nonce={ctx.nonce} dangerouslySetInnerHTML={{ __html: FOUC_SCRIPT }} />
+    <script nonce={ctx.nonce}>{rawHtml(FOUC_SCRIPT)}</script>
     <link rel="stylesheet" href="/assets/styles.css" nonce={ctx.nonce} />
 
 Placement before the stylesheet ensures the `dark` class is set before the browser

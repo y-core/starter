@@ -1,12 +1,12 @@
 ---
 title: Middleware and Context
-description: "applyMiddleware, middleware ordering, makeSecurityHeaders, requestId, requestLogger, CORS, AppEnv, Bindings, Variables, CsrfContext, RequestIdContext, LoggerContext, SecureHeadersContext, contactGuard, rateLimitGuard, csrfVerifyGuard, renderContext"
+description: "registerMiddleware, middleware ordering, makeSecurityHeaders, requestId, requestLogger, CORS, AppEnv, Bindings, Variables, CsrfContext, RequestIdContext, LoggerContext, SecureHeadersContext, contactGuard, rateLimitGuard, csrfVerifyGuard, renderContext"
 weight: 21
 ---
 
 # Middleware and Context
 
-> Authoritative source for applyMiddleware ordering, AppEnv bindings and variables,
+> Authoritative source for registerMiddleware ordering, AppEnv bindings and variables,
 > route-level guards, and the renderContext helper.
 >
 > Complements [ARCHITECTURE_GUIDE.md](./ARCHITECTURE_GUIDE.md) §3,
@@ -16,7 +16,7 @@ weight: 21
 
 ## 0. Quick Reference
 
-- §1 applyMiddleware: ordering (security → requestId → logging → CORS)
+- §1 registerMiddleware: ordering (security → requestId → logging → CORS)
 - §2 AppEnv / AppContext: Bindings (Env), render method, ForgeAppContext
 - §3 Route guards: contactGuard, rateLimitGuard, csrfVerifyGuard
 - §4 renderContext: per-request presentation values (nonce, csrfToken, baseUrl, turnstile)
@@ -27,11 +27,11 @@ weight: 21
 
 ---
 
-## 1. applyMiddleware — Global Middleware Stack
+## 1. registerMiddleware — Global Middleware Stack
 
 ### 1a. Middleware Ordering
 
-    export function applyMiddleware(app: Forge<AppEnv>, security: SecurityHeadersOptions): void {
+    export function registerMiddleware(app: Forge<AppEnv>, security: SecurityHeadersOptions): void {
       app.use("*", makeSecurityHeaders(security))            // 1. CSP/HSTS/XFO + nonce
       app.use("*", requestId())                              // 2. X-Request-Id + context var
       app.use("*", requestLogger<AppEnv>({...}))             // 3. request/response logging

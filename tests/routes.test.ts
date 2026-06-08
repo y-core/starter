@@ -73,7 +73,7 @@ beforeAll(async () => {
       return new Response(null, { status: 202 });
     }
     if (url.toString() === TURNSTILE_URL) {
-      return new Response(JSON.stringify({ success: true }));
+      return new Response(JSON.stringify({ success: true, hostname: "example.com" }));
     }
     return _savedFetch(url, ...args);
   };
@@ -515,7 +515,7 @@ describe("POST /api/contact — Turnstile verification", () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = async (url) => {
       if (url.toString().includes("challenges.cloudflare.com")) {
-        return new Response(JSON.stringify({ success: true }));
+        return new Response(JSON.stringify({ success: true, hostname: "example.com" }));
       }
       return new Response(null, { status: 202 });
     };
@@ -680,18 +680,18 @@ const LOGS_ENV = { ...MINIMUM_ENV, LOGS_KV: MOCK_LOGS_KV } as unknown as Env;
 const EXPECTED_EMPTY_TBODY =
   '<tbody id="log-tbody"><tr><td colspan="5" class="py-8 text-center text-brand-500 text-sm">No log entries found.</td></tr></tbody>';
 
-describe("GET /admin/logs — full page", () => {
+describe("GET /showcase/logs — full page", () => {
   it("returns 200 status", async () => {
-    const res = await app.request("/admin/logs", {}, LOGS_ENV);
+    const res = await app.request("/showcase/logs", {}, LOGS_ENV);
     expect(res.status).toBe(200);
   });
 
   it("renders a full HTML page with the log viewer", async () => {
-    const res = await app.request("/admin/logs", {}, LOGS_ENV);
+    const res = await app.request("/showcase/logs", {}, LOGS_ENV);
     const text = await res.text();
     expect(text).toContain("<!DOCTYPE html>");
     expect(text).toContain(">Request Log</h1>");
-    expect(text).toContain('hx-get="/admin/logs"');
+    expect(text).toContain('hx-get="/showcase/logs"');
     expect(text).toContain(">Timestamp</th>");
     expect(text).toContain(">Level</th>");
     expect(text).toContain(">Request ID</th>");
@@ -699,7 +699,7 @@ describe("GET /admin/logs — full page", () => {
   });
 
   it("includes required security headers", async () => {
-    const res = await app.request("/admin/logs", {}, LOGS_ENV);
+    const res = await app.request("/showcase/logs", {}, LOGS_ENV);
     expect(res.headers.get("content-security-policy")).not.toBeNull();
     expect(res.headers.get("strict-transport-security")).toBe("max-age=63072000; includeSubDomains; preload");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
@@ -707,9 +707,9 @@ describe("GET /admin/logs — full page", () => {
   });
 });
 
-describe("GET /admin/logs — HTMX partial", () => {
+describe("GET /showcase/logs — HTMX partial", () => {
   it("returns only the tbody fragment when HX-Request is true", async () => {
-    const res = await app.request("/admin/logs", { headers: { "HX-Request": "true" } }, LOGS_ENV);
+    const res = await app.request("/showcase/logs", { headers: { "HX-Request": "true" } }, LOGS_ENV);
     expect(res.status).toBe(200);
     const text = await res.text();
     // exact match proves TBODY_ID in the partial equals the id the full page registers as swap target
@@ -717,7 +717,7 @@ describe("GET /admin/logs — HTMX partial", () => {
   });
 
   it("does not include the full page shell in the partial response", async () => {
-    const res = await app.request("/admin/logs", { headers: { "HX-Request": "true" } }, LOGS_ENV);
+    const res = await app.request("/showcase/logs", { headers: { "HX-Request": "true" } }, LOGS_ENV);
     const text = await res.text();
     expect(text).not.toContain("<!DOCTYPE html>");
     expect(text).not.toContain(">Request Log</h1>");

@@ -10,7 +10,7 @@ import type { AppEnv } from "./context";
  * Application middleware
  ******************************************************************************/
 
-export function applyMiddleware(app: Forge<AppEnv>, security: SecurityHeadersOptions): void {
+export function registerMiddleware(app: Forge<AppEnv>, security: SecurityHeadersOptions): void {
   app.use("*", makeSecurityHeaders(security));
   app.use("*", requestId());
   app.use(

@@ -9,7 +9,7 @@
 ## Code Style
 
 ### Naming
-- Functions: camelCase verb-first (`handleContact`, `renderContext`, `applyMiddleware`)
+- Functions: camelCase verb-first (`handleContact`, `renderContext`, `registerMiddleware`)
 - Types: PascalCase (`AppEnv`, `RenderContext`, `ContactInput`)
 - Schemas: PascalCase + `Schema` suffix (`ContactSchema`, `AppConfigSchema`)
 - Guards: camelCase + `Guard` suffix (`contactGuard`, `csrfVerifyGuard`)

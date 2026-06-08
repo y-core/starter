@@ -1,10 +1,12 @@
 /** @jsxImportSource @y-core/forge */
 
 import { assets, CoreIcon } from "@assets";
+import { rawHtml } from "@y-core/forge/http";
 import type { JSXNode } from "@y-core/forge/ui";
 import { FOUC_SCRIPT } from "@y-core/forge/ui/client";
 import type { RenderContext } from "../app/context";
 import { site } from "../model/site.content";
+import { routes } from "../routes";
 import { ThemeToggle } from "./ui";
 
 interface LayoutProps {
@@ -46,11 +48,13 @@ export function Layout({ ctx, children }: LayoutProps) {
         <link rel='manifest' href='/site.webmanifest' />
 
         {/* FOUC_SCRIPT before stylesheet to set data-theme-preference */}
-        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: FOUC_SCRIPT }} />
+        <script nonce={nonce}>{rawHtml(FOUC_SCRIPT)}</script>
 
         <link rel='stylesheet' href={assets.path("css/main.css")} />
 
-        <script nonce={nonce} type='application/ld+json' dangerouslySetInnerHTML={{ __html: jsonLd }} />
+        <script nonce={nonce} type='application/ld+json'>
+          {rawHtml(jsonLd)}
+        </script>
         <script nonce={nonce} src={assets.path("js/main.js")} type='module' />
       </head>
       <body>
@@ -62,7 +66,7 @@ export function Layout({ ctx, children }: LayoutProps) {
 
         <header class='sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-lg'>
           <div class='mx-auto flex max-w-7xl items-center justify-between px-6 py-4 lg:px-10'>
-            <a href='/' class='flex items-center gap-3' aria-label='Forge Studio — Home'>
+            <a href={routes.home.href()} class='flex items-center gap-3' aria-label='Forge Studio — Home'>
               <div class='h-9 shrink-0'>
                 <CoreIcon name='logo' class='h-7 w-auto md:h-10' />
               </div>
