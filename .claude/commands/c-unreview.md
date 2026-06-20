@@ -1,6 +1,6 @@
 do a comprehensive review of the current uncomitted changes in this repository.
 
-using .decisions/agents/cc-plan.md following the guidance in .decisions/CODE_REVIEW.md   
+using .claude/agents/cc-plan.md following the guidance in .decisions/CODE_REVIEW.md   
 - critically assess whether the code is secure, bullet-proof and production-ready
 - consider how the system flows to deliver a world-class architected design and architecture.
 - ensure that the code patterns are efficient and effective and naturally avoid technical debt. 

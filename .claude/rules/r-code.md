@@ -6,8 +6,6 @@
 
 ## TypeScript Patterns
 
-## Code Style
-
 ### Naming
 - Functions: camelCase verb-first (`handleContact`, `renderContext`, `registerMiddleware`)
 - Types: PascalCase (`AppEnv`, `RenderContext`, `ContactInput`)
@@ -21,12 +19,17 @@
 - Views receive data via props (not from services directly)
 - One exported function per exported concern — no multi-purpose helpers
 
-### Forge Consumption Rules
+### External Module Imports
+- Always import from `@y-core/forge/{namespace}` — never reach into forge internals
+- Named exports only — no default exports except Worker entry and app factory
+- No deep-reach into `node_modules` for dependencies wrapped by forge
+
+## Forge Consumption Rules
 - Always import from `@y-core/forge/{namespace}`
 - Never re-implement security headers, CSRF, validation, or fragment renderers — use forge
 - Config via `configStore.get(c.env)`, never `process.env`
 
-### Where to Put New Code
+## Where to Put New Code
 Consult `.decisions/ARCHITECTURE_GUIDE.md` and `.decisions/ROUTING.md` for ownership model.
 
 - `src/model/` — TypeScript types and valibot schemas

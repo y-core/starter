@@ -7,7 +7,7 @@
 ## Pre-Planning Checklist
 
 1. **Layer?** Which of: `src/app/` (config/middleware), `src/routes.ts` + `src/router.tsx`, `src/controllers/` (render + mutation handlers), `src/services/`, `src/views/`, `src/model/`
-2. **Already exists?** Use tsmcp LSP (`lsp_workspace_symbols`, `lsp_find_references`) and `rg` to search before proposing new code.
+2. **Already exists?** Use `rg` and `Read` to search before proposing new code.
 3. **Leverage forge?** Check if `@y-core/forge` has a namespace for this before implementing from scratch.
 
 ---
@@ -33,6 +33,17 @@ Never skip or reorder steps.
 - HTMX-only POST routes MUST have an equivalent of `contactGuard` (origin + HX-Request check)
 - `/admin/*` routes: add auth middleware before exposing in production
 - Group routes by scope: public, protected, admin
+
+---
+
+## Error Classification
+
+| Category | Type | Location |
+|---|---|---|
+| Validation errors | `renderValidationErrors` fragment | controller boundary |
+| Domain errors | typed `ErrXxx` sentinel / discriminated union | service layer |
+| Unexpected errors | `renderError` fragment / 500 | controller catch |
+| Infrastructure | `throw new Error(...)` | startup invariants, missing bindings |
 
 ---
 

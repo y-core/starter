@@ -27,10 +27,9 @@
 |---|---|
 | `bun` | Package manager and script runner |
 | `tsgo` (`@typescript/native-preview`) | Type checker (10× faster than tsc) |
-| `esbuild` | Client JS bundler |
 | `biome` | Linter and formatter |
-| `tailwindcss` CLI | CSS build |
 | `wrangler` | Cloudflare Workers deploy and dev server |
+| `forge-assets` | Client bundle (esbuild) + Tailwind CSS + Lucide sprite pipeline |
 
 **Key commands:**
 
@@ -71,7 +70,7 @@ bun run test          # tests
 
 > Before writing code, consult the relevant governing document:
 
-- [`AGENT_GUIDE.md`](.decisions/AGENT_GUIDE.md): document structure rules for tsmcp MCP efficiency
+- [`AGENT_GUIDE.md`](.decisions/AGENT_GUIDE.md): document structure rules, section numbering, frontmatter, cross-reference format
 - [`ARCHITECTURE_GUIDE.md`](.decisions/ARCHITECTURE_GUIDE.md): createWorker factory, layer stack, DI via Config, dev/prod CSP split
 - [`PRODUCTION_RULES.md`](.decisions/PRODUCTION_RULES.md): six rules — no globals, validate at boundary, leverage forge, dev mirrors prod
 - [`MIDDLEWARE_AND_CONTEXT.md`](.decisions/MIDDLEWARE_AND_CONTEXT.md): middleware ordering, AppEnv, route guards, renderContext
@@ -85,35 +84,6 @@ bun run test          # tests
 - [`UI_GUIDE.md`](.decisions/UI_GUIDE.md): views/, layout, HTMX patterns, Tailwind v4 @theme tokens, theme toggle
 - [`WEB_DESIGN.md`](.decisions/WEB_DESIGN.md): Workers runtime model, ctx.waitUntil, rate limiting, deploy safety
 - [`CODE_REVIEW.md`](.decisions/CODE_REVIEW.md): review checklists, layer compliance, forge consumption, severity calibration
-
----
-
-## tsmcp
-
-Registered in `.mcp.json`. Available in all agents.
-
-**Governance docs — in order:**
-1. `mcp__tsmcp__decisions_list` — list all docs with section index (start here)
-2. `mcp__tsmcp__decisions_search` — locate relevant sections by keyword
-3. `mcp__tsmcp__decisions_read` — read a specific section: `section: "3a"` (not the full doc)
-
-**TypeScript symbol navigation — in order:**
-1. `mcp__tsmcp__lsp_workspace_symbols` — find types, functions, interfaces by name
-2. `mcp__tsmcp__lsp_definition` — jump to the definition of a known symbol
-3. `mcp__tsmcp__lsp_find_references` — find all callers / implementors
-4. `mcp__tsmcp__lsp_document_symbols` — list all symbols in a specific file
-
-**Behavioral rule:** NEVER use Bash `grep` or `Read` on `.decisions/` files when tsmcp is available.
-
-| Tool | Use |
-|------|-----|
-| `mcp__tsmcp__decisions_list` | List governing docs with section index — start here |
-| `mcp__tsmcp__decisions_read` | Read a doc or a specific section (`section: "3a"`) |
-| `mcp__tsmcp__decisions_search` | Search all governing docs by keyword |
-| `mcp__tsmcp__lsp_workspace_symbols` | Find types, functions, interfaces by name (indexed, fast) |
-| `mcp__tsmcp__lsp_find_references` | All callers / all implementors |
-| `mcp__tsmcp__lsp_definition` | Jump to any symbol definition |
-| `mcp__tsmcp__lsp_document_symbols` | List symbols in a TypeScript file by path |
 
 ---
 
@@ -139,11 +109,13 @@ Invoke the right agent for each phase. Each agent reads its paired rules file fi
 
 | Phase | Agent | Rules | When |
 |-------|-------|-------|------|
-| Analysis & Design | `cc-plan` | `.decisions/rules/r-plan.md` | Before any code — layer placement, "leverage forge" check, architecture |
-| Implementation | `cc-dev` | `.decisions/rules/r-code.md` | After plan approved — write code in correct layers, consume forge namespaces |
-| Testing | `cc-test` | `.decisions/rules/r-test.md` | After implementation — app.request tests, security pass+fail |
-| Architecture Review | `cc-plan` | `.decisions/rules/r-plan.md` | After tests pass — refactor planning |
+| Analysis & Design | `cc-plan` | `.claude/rules/r-plan.md` | Before any code — layer placement, "leverage forge" check, architecture |
+| Implementation | `cc-dev` | `.claude/rules/r-code.md` | After plan approved — write code in correct layers, consume forge namespaces |
+| Testing | `cc-test` | `.claude/rules/r-test.md` | After implementation — app.request tests, security pass+fail |
+| Architecture Review | `cc-plan` | `.claude/rules/r-plan.md` | After tests pass — refactor planning |
 
 Agent flow: `cc-plan` → `cc-dev` → `cc-test` → (if issues) back to `cc-plan`
 
-Agents and rules live in `.decisions/agents/` and `.decisions/rules/`.
+`cc-doc` (documentation) operates outside the plan→dev→test pipeline. Reusable slash-commands live in `.claude/commands/` (`c-review`, `c-unreview`).
+
+Agents and rules live in `.claude/agents/` and `.claude/rules/`.
