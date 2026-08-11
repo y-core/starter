@@ -1,7 +1,7 @@
 import { escapeHtml } from "@y-core/forge/http";
 import type { Logger } from "@y-core/forge/logging";
 import type { EmailConfig } from "../app/config";
-import type { ContactSubmission } from "../model/contact";
+import type { ContactSubmission } from "../controllers/actions/contact";
 
 export type EmailResult = { ok: true } | { ok: false; reason: string };
 

@@ -1,23 +1,18 @@
-import { Config, env } from "@y-core/forge/config";
+import { createConfig, env } from "@y-core/forge/config";
 import { CsrfConfigSchema } from "@y-core/forge/form";
 import type { SecurityHeadersOptions } from "@y-core/forge/security";
-import { BaseUrlConfigSchema, NONCE } from "@y-core/forge/security";
+import { BaseUrlConfigSchema, NONCE, TURNSTILE_CSP } from "@y-core/forge/security";
 import { v } from "@y-core/forge/validation";
 
 export type AppConfig = v.InferOutput<typeof AppConfigSchema>;
 export type EmailConfig = AppConfig["services"]["email"];
 
-const CONFIG = {
-  TURNSTILE_CSP: "https://challenges.cloudflare.com",
-  BASE_URL: "https://yourdomain.com",
-  EMAIL_FROM: "hello@yourdomain.com",
-  EMAIL_TO: "hello@yourdomain.com",
-};
+const CONFIG = { BASE_URL: "https://yourdomain.com", EMAIL_FROM: "hello@yourdomain.com", EMAIL_TO: "hello@yourdomain.com" };
 
 export const securityHeaders: SecurityHeadersOptions = {
-  scriptSrc: ["'self'", NONCE, CONFIG.TURNSTILE_CSP],
-  connectSrc: ["'self'", CONFIG.TURNSTILE_CSP],
-  frameSrc: ["'self'", CONFIG.TURNSTILE_CSP],
+  scriptSrc: ["'self'", NONCE, TURNSTILE_CSP],
+  connectSrc: ["'self'", TURNSTILE_CSP],
+  frameSrc: ["'self'", TURNSTILE_CSP],
   permissionsPolicy: { microphone: ["self"] },
 };
 
@@ -51,4 +46,6 @@ export const appConfig = {
   },
 };
 
-export const configStore = new Config(appConfig, AppConfigSchema);
+// `AppConfigSchema` stays on `v.object` rather than `strictObject`: it parses `env`, not untrusted
+// request input, and an extra binding is not an attack surface the way an extra form field is.
+export const configStore = createConfig(appConfig, AppConfigSchema);

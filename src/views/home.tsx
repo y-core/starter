@@ -1,8 +1,9 @@
 /** @jsxImportSource @y-core/forge/jsx */
 
 import { CoreIcon } from "@assets";
-import { Field, Form, Input, Textarea } from "@y-core/forge/ui/core";
+import { Form, FormField, Honeypot, Input, Textarea, Turnstile } from "@y-core/forge/ui/core";
 import type { RenderContext } from "../app/context";
+import { CONTACT_DECOY } from "../controllers/actions/contact";
 import type { HomeContent } from "../model/home.content";
 import { routes } from "../routes";
 import { Layout } from "./layout";
@@ -77,50 +78,47 @@ export function HomeView({ ctx, content }: HomeViewProps) {
                   hx-indicator='#form-spinner'
                   novalidate={true}
                   csrfToken={csrfToken}>
-                  <Field name='name'>
-                    <Field.Label name='name'>
+                  {/* `Form` stopped rendering a decoy at forge 0.0.80 — it did so unconditionally,
+                      leaking `?__surname=` into every `method="get"` form's links and Referer. It is
+                      composed explicitly here, and its name is named again by the action's `honeypot:`. */}
+                  <Honeypot field={CONTACT_DECOY} />
+                  <FormField name='name'>
+                    <FormField.Label name='name'>
                       Name{" "}
                       <span class='text-primary' aria-hidden='true'>
                         *
                       </span>
-                    </Field.Label>
+                    </FormField.Label>
                     <Input field={{ name: "name" }} type='text' autocomplete='name' placeholder='Jane Example' required={true} />
-                    <Field.Error />
-                  </Field>
-                  <Field name='email'>
-                    <Field.Label name='email'>
+                    <FormField.Error />
+                  </FormField>
+                  <FormField name='email'>
+                    <FormField.Label name='email'>
                       Email{" "}
                       <span class='text-primary' aria-hidden='true'>
                         *
                       </span>
-                    </Field.Label>
-                    <Input
-                      field={{ name: "email" }}
-                      data-ref='turnstile-trigger'
-                      type='email'
-                      autocomplete='email'
-                      placeholder='jane@example.com'
-                      required={true}
-                    />
-                    <Field.Error />
-                  </Field>
-                  <Field name='phone'>
-                    <Field.Label name='phone'>
+                    </FormField.Label>
+                    <Input field={{ name: "email" }} type='email' autocomplete='email' placeholder='jane@example.com' required={true} />
+                    <FormField.Error />
+                  </FormField>
+                  <FormField name='phone'>
+                    <FormField.Label name='phone'>
                       Contact Number <span class='text-xs font-normal text-muted-foreground'>(optional)</span>
-                    </Field.Label>
+                    </FormField.Label>
                     <Input field={{ name: "phone" }} type='tel' autocomplete='tel' placeholder='+1 555 012 3456' />
-                    <Field.Error />
-                  </Field>
-                  <Field name='message'>
-                    <Field.Label name='message'>
+                    <FormField.Error />
+                  </FormField>
+                  <FormField name='message'>
+                    <FormField.Label name='message'>
                       Message{" "}
                       <span class='text-primary' aria-hidden='true'>
                         *
                       </span>
-                    </Field.Label>
+                    </FormField.Label>
                     <Textarea field={{ name: "message" }} placeholder='Tell us about your project.' required={true} class='min-h-36' />
-                    <Field.Error />
-                  </Field>
+                    <FormField.Error />
+                  </FormField>
                   <div class='flex flex-col items-center gap-4 lg:items-start'>
                     <button
                       data-ref='contact-submit'
@@ -131,7 +129,10 @@ export function HomeView({ ctx, content }: HomeViewProps) {
                         <CoreIcon name='spinner' class='h-4 w-4 animate-spin' />
                       </span>
                     </button>
-                    {turnstileSiteKey && <div data-ref='turnstile' class='cf-turnstile' data-sitekey={turnstileSiteKey} data-size='normal'></div>}
+                    {/* Deliberately omits Cloudflare's `cf-turnstile` auto-render class — `mountTurnstile()`
+                        owns rendering, so the widget lifecycle is deterministic. Inside the `<form>` so the
+                        token input Turnstile injects is submitted with it. */}
+                    {turnstileSiteKey && <Turnstile siteKey={turnstileSiteKey} size='normal' />}
                   </div>
                 </Form>
                 <div data-ref='contact-result' id='contact-result' class='mt-4' aria-live='polite'></div>

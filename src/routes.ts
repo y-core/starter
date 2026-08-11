@@ -5,8 +5,5 @@ export const routes = route({
   health: get("/api/health"),
   contact: post("/api/contact"),
   home: get("/"),
-  showcase: {
-    logs: get("/showcase/logs"),
-    ...showcaseRoutes("/showcase/ui"),
-  },
+  showcase: { logs: get("/showcase/logs"), ...showcaseRoutes("/showcase/ui") },
 });

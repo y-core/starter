@@ -8,10 +8,8 @@ import { Spinner as ForgeSpinner } from "@y-core/forge/ui/core";
  * `ThemeToggle` without threading an `icon` prop everywhere. The type-check enforces that the
  * sprite (src/assets/config.ts) contains every icon these components need.
  */
-export const Spinner = (props: Omit<Parameters<typeof ForgeSpinner>[0], "icon">) =>
-  ForgeSpinner({ ...props, icon: CoreIcon });
+export const Spinner = (props: Omit<Parameters<typeof ForgeSpinner>[0], "icon">) => ForgeSpinner({ ...props, icon: CoreIcon });
 
-export const ThemeToggle = (props: Omit<Parameters<typeof ForgeThemeToggle>[0], "icon"> = {}) =>
-  ForgeThemeToggle({ ...props, icon: CoreIcon });
+export const ThemeToggle = (props: Omit<Parameters<typeof ForgeThemeToggle>[0], "icon"> = {}) => ForgeThemeToggle({ ...props, icon: CoreIcon });
 
 export { Select };

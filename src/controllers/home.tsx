@@ -1,6 +1,6 @@
 /** @jsxImportSource @y-core/forge/jsx */
 import { definePage } from "@y-core/forge/app";
-import { renderPage } from "@y-core/forge/render";
+import { renderPage } from "@y-core/forge/jsx";
 import type { AppConfig } from "../app/config";
 import type { AppEnv, RenderContext } from "../app/context";
 import { renderContext } from "../app/context";

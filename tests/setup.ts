@@ -1,11 +1,11 @@
 // Polyfill URLPattern for Bun test environment (not built into Bun's runtime).
 import "urlpattern-polyfill";
-import { beforeEach } from "bun:test";
+
 import { ConfigKey } from "@y-core/forge/app";
 import { EnvKey, ExecutionContextKey, RequestContext } from "@y-core/forge/context";
 import type { Logger } from "@y-core/forge/logging";
 import { requestLog } from "@y-core/forge/logging";
-import { type AppConfig, configStore } from "../src/app/config";
+import type { AppConfig } from "../src/app/config";
 import type { AppContext, AppEnv } from "../src/app/context";
 
 // biome-ignore lint/suspicious/noExplicitAny: mock context for testing only
@@ -43,12 +43,10 @@ function suppressLogger(original: (...args: unknown[]) => void) {
   };
 }
 
-// Config is a per-isolate singleton (first env wins). bun test runs all files in
-// one process, so reset between cases to stop one file's env (e.g. CSRF_SECRET)
-// leaking into the next. See forge Config.get() docs.
-beforeEach(() => {
-  configStore.reset();
-});
+// Since forge 0.0.67 `Config.get(env)` caches per distinct `env` object in a WeakMap rather than
+// first-env-wins, so one file's `CSRF_SECRET` can no longer leak into the next and the
+// `beforeEach(() => configStore.reset())` this file used to carry is no longer load-bearing.
+// `reset()` still exists — reinstate it here if a future test mutates a shared env object in place.
 
 // Suppress structured logger output (JSON lines with level+prefix+message).
 console.log = suppressLogger(console.log);

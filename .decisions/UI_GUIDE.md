@@ -1,6 +1,6 @@
 ---
 title: "UI Guide"
-description: "views directory, layout component, home view, logs view, not-found view, forge ui components, HTMX patterns, Tailwind v4 @theme tokens, theme toggle, FOUC_SCRIPT, mountTheme, SEO JSON-LD, OG tags, mountTurnstile, mountNav, nonce inline scripts"
+description: "views directory, layout component, home view, logs view, not-found view, forge ui components, HTMX patterns, Tailwind v4 @theme tokens, theme toggle, FOUC_SCRIPT, theme resumable scope, SEO JSON-LD, OG tags, mountTurnstile, Navbar component, navbar resumable scope, resume, nonce inline scripts"
 weight: 30
 ---
 
@@ -17,7 +17,7 @@ weight: 30
 - §3 Home view: hero, contact form, JSON-LD, OG meta
 - §4 HTMX patterns: hx-post, hx-target, hx-swap
 - §5 Tailwind v4 @theme tokens: brand-*, system fonts
-- §6 Theme toggle: FOUC_SCRIPT, mountTheme
+- §6 Theme toggle and navbar: FOUC_SCRIPT, theme and navbar resumable scopes, resume()
 
 ---
 
@@ -117,11 +117,17 @@ Import from forge:
 Because the script runs inline, it is injected with `rawHtml(FOUC_SCRIPT)` — this is a
 known-valid pattern. See [CODE_REVIEW.md §8](./CODE_REVIEW.md) for why it is not flagged.
 
-### 2c. Deferred Scripts and Mount Functions
+### 2c. Deferred Scripts and Resumable Scopes
 
-Client-side mount functions (`mountTheme`, `mountNav`, `mountTurnstile`) are bundled
-into `/assets/js/main.js` via esbuild and loaded with `defer`. They initialize
-interactive behavior after `DOMContentLoaded` without blocking first paint.
+Client-side initializers are bundled into `/assets/js/main.js` via esbuild and loaded
+with `defer`, initializing interactive behavior after `DOMContentLoaded` without
+blocking first paint. Two kinds live there:
+
+- **Explicit mount calls** — `mountTurnstile()`, for behavior the app opts into.
+- **Resumable scopes** — registered as a side effect of importing a forge client
+  module (`ui/chrome/client`, `ui/core/client`, `ui/show/client`) and activated by a
+  single `resume()` call. Components declare their scope in markup, so there is no
+  per-component mount call to keep in sync. See §6b and §6c.
 
     <script defer src="/assets/js/main.js" nonce={ctx.nonce} />
 
@@ -279,8 +285,8 @@ No external web fonts are loaded — zero layout shift, zero external requests.
 ### 5c. Dark Mode via Class Strategy
 
 Tailwind v4 dark mode is configured with the `class` strategy. The `dark` class on
-`<html>` (applied by FOUC_SCRIPT and toggled by mountTheme) activates all `dark:*`
-variants.
+`<html>` (applied by FOUC_SCRIPT and toggled by the `theme` scope — see §6b) activates
+all `dark:*` variants.
 
 ---
 
@@ -291,7 +297,7 @@ variants.
 Import `FOUC_SCRIPT` from the forge client module and render it as the **first**
 `<script>` in `<head>`, before any stylesheets:
 
-    import { FOUC_SCRIPT } from "@y-core/forge/ui/client"
+    import { FOUC_SCRIPT } from "@y-core/forge/ui/chrome"
     import { rawHtml } from "@y-core/forge/http"
 
     // In Layout <head>:
@@ -301,29 +307,55 @@ Import `FOUC_SCRIPT` from the forge client module and render it as the **first**
 Placement before the stylesheet ensures the `dark` class is set before the browser
 computes styles, eliminating the flash.
 
-### 6b. mountTheme Client Function
+### 6b. Theme Resumable Scope
 
-`mountTheme()` is called from `src/client/main.ts` after DOM is ready. It:
+There is no `mountTheme()` — forge no longer exports one. Importing
+`@y-core/forge/ui/chrome/client` for its side effect registers an **eager `theme`
+scope**; `resume()` then reconciles the signal with what `FOUC_SCRIPT` already applied
+from `localStorage` and wires the toggle's `cycleTheme` action.
 
-1. Reads the current theme from `localStorage`
-2. Wires the toggle button's `click` handler
-3. Toggles the `dark` class on `<html>` and persists to `localStorage`
+    // src/client/main.ts — order matters: register, then resume
+    import "@y-core/forge/ui/chrome/client"
+    import { resume } from "@y-core/forge/ui/client"
 
-Import `DARK_CLASS` from forge for the canonical class name:
+    resume()
 
-    import { mountTheme, DARK_CLASS } from "@y-core/forge/ui/client"
-    // DARK_CLASS === "dark"
-    mountTheme()
+Render the toggle with `ThemeToggle` from `@y-core/forge/ui/chrome`. It emits the
+`data-scope="theme"` marker `resume()` discovers, so no `data-ref` wiring is needed.
+`DARK_CLASS`, `THEME_ATTR`, and `THEME_STORAGE_KEY` are exported from the same
+namespace when markup or a test needs the canonical strings.
 
-The toggle button in the nav must have `data-ref="theme-toggle"` for `mountTheme`
-to locate it. Use the forge `ThemeToggle` component from `@y-core/forge/ui` which
-includes the correct `data-ref`.
+Render it **once per page**. Each instance is a separate scope, so a second copy is a
+second theme controller rather than a mirror of the first.
 
-### 6c. mountNav Client Function
+### 6c. Navbar Component and Navbar Resumable Scope
 
-`mountNav()` wires mobile nav open/close behavior. The nav must include elements with
-`data-ref="nav-toggle"` and `data-ref="nav-menu"`. Use the forge `Nav` component
-from `@y-core/forge/ui` which provides these markers.
+There is no `mountNav()` — forge 0.0.83 removed it, and the `data-ref="nav-toggle"` /
+`data-ref="nav-menu"` markup it drove is dead. Use `Navbar` from
+`@y-core/forge/ui/chrome`, whose disclosure is a native `<details>`/`<summary>` and so
+opens and closes without JavaScript. The same `ui/chrome/client` side-effect import
+registers an eager `navbar` scope for the parts that do need script — auth filtering
+and viewport collapse.
 
-    import { mountNav } from "@y-core/forge/ui/client"
-    mountNav()
+`Navbar` is configuration-driven: the tree comes from a `NavDefinition`, not from JSX
+children, and every `href` is a **route-map key** resolved through a required
+`resolveHref`. That return need not be a route — an in-page fragment is a valid
+resolution. See `src/views/nav.tsx` for the starter's config and §1a for how the
+header composes it.
+
+    <Navbar
+      id='primary-nav'
+      aria-label='Primary'
+      config={primaryNav}
+      resolveHref={resolveNavHref}
+      icon={CoreIcon}
+      class='static z-auto bg-transparent'
+    />
+
+Two consequences worth knowing before composing it:
+
+- **Pass `aria-label` explicitly** or the landmark renders unnamed.
+- **Everything inside the bar is hidden on mobile until the disclosure opens** (the
+  panel is `hidden group-open:flex md:flex`). Content that must stay visible in the
+  mobile header — brand mark, theme toggle — belongs beside `<Navbar>`, not in a
+  `NavSlot`.

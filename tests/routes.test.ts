@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { createCsrfToken, importCsrfKey } from "@y-core/forge/form";
+import { CSRF_FIELD_DEFAULT, createCsrfToken, importCsrfKey, TURNSTILE_FIELD_DEFAULT } from "@y-core/forge/form";
 import type { AppConfig } from "../src/app/config";
 import type { AppEnv } from "../src/app/context";
-import { handleContact } from "../src/controllers/actions/contact";
+import { CONTACT_DECOY, ContactSchema, contactAction } from "../src/controllers/actions/contact";
 import app from "../src/worker";
 import devApp from "../src/worker.dev";
 import { makeTestContext } from "./setup";
@@ -44,9 +44,19 @@ const EMAIL_API_URL = "https://api.mailchannels.net/tx/v1/send";
 const TURNSTILE_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
 const EXPECTED_SUCCESS_HTML =
-  '<div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" data-success><p>Thanks. We&#39;ll review your note and get back to you soon.</p></div>';
+  '<div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200" data-success><p>Thanks. We&#39;ll review your note and get back to you soon.</p></div>';
 const EXPECTED_EMAIL_ERROR_HTML =
-  '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Something went wrong. Please try again or contact us directly.</p></div>';
+  '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-800 dark:bg-red-950 dark:text-red-200"><p>Something went wrong. Please try again or contact us directly.</p></div>';
+
+/**
+ * The whole refusal body forge's submission pipeline renders for a body it declines: one `<li>`
+ * naming the failing field and nothing else. `abortEarly` holds it to a single issue however many
+ * fields a caller broke, and `describeValidationIssue` reproduces neither the submitted value nor
+ * the schema's rule — so neither the issue count nor the response length is caller-steerable.
+ */
+function refusal(field: string): string {
+  return `<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-800 dark:bg-red-950 dark:text-red-200"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>${field}</li></ul></div>`;
+}
 
 const MOCK_ASSETS = { fetch: async () => new Response("", { status: 200 }) };
 
@@ -146,15 +156,14 @@ describe("POST /api/contact", () => {
     expect(await response.text()).toBe(EXPECTED_SUCCESS_HTML);
   });
 
-  it("returns the validation fragment for an invalid form", async () => {
+  it("returns the validation fragment naming only the first failing field", async () => {
+    // Three fields are broken; the refusal names one. That is `abortEarly`, not an omission.
     const body = new URLSearchParams({ name: "", email: "not-an-email", phone: "", message: "Too short", "cf-turnstile-response": "test-token" });
 
     const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
 
     expect(response.status).toBe(422);
-    expect(await response.text()).toBe(
-      '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>Name is required.</li><li>A valid email address is required.</li><li>Message must be at least 15 characters.</li></ul></div>',
-    );
+    expect(await response.text()).toBe(refusal("name"));
   });
 
   it("includes required security headers", async () => {
@@ -272,9 +281,7 @@ describe("POST /api/contact — boundary values", () => {
     const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
 
     expect(response.status).toBe(422);
-    expect(await response.text()).toBe(
-      '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>Message must be at least 15 characters.</li></ul></div>',
-    );
+    expect(await response.text()).toBe(refusal("message"));
   });
 
   it("accepts a name of exactly 100 characters (maximum)", async () => {
@@ -304,9 +311,7 @@ describe("POST /api/contact — boundary values", () => {
     const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
 
     expect(response.status).toBe(422);
-    expect(await response.text()).toBe(
-      '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>Name must be 100 characters or fewer.</li></ul></div>',
-    );
+    expect(await response.text()).toBe(refusal("name"));
   });
 
   it("succeeds without an optional phone number", async () => {
@@ -351,9 +356,7 @@ describe("POST /api/contact — boundary values", () => {
     const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
 
     expect(response.status).toBe(422);
-    expect(await response.text()).toBe(
-      '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>Message must be 2000 characters or fewer.</li></ul></div>',
-    );
+    expect(await response.text()).toBe(refusal("message"));
   });
 
   it("accepts a phone of exactly 20 characters (maximum)", async () => {
@@ -383,9 +386,7 @@ describe("POST /api/contact — boundary values", () => {
     const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
 
     expect(response.status).toBe(422);
-    expect(await response.text()).toBe(
-      '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>Contact number must be 20 characters or fewer.</li></ul></div>',
-    );
+    expect(await response.text()).toBe(refusal("phone"));
   });
 
   it("accepts an email of exactly 254 characters (maximum)", async () => {
@@ -417,9 +418,7 @@ describe("POST /api/contact — boundary values", () => {
     const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
 
     expect(response.status).toBe(422);
-    expect(await response.text()).toBe(
-      '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>A valid email address is required.</li></ul></div>',
-    );
+    expect(await response.text()).toBe(refusal("email"));
   });
 
   it("rejects a whitespace-only name after trimming", async () => {
@@ -434,9 +433,7 @@ describe("POST /api/contact — boundary values", () => {
     const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
 
     expect(response.status).toBe(422);
-    expect(await response.text()).toBe(
-      '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>Name is required.</li></ul></div>',
-    );
+    expect(await response.text()).toBe(refusal("name"));
   });
 });
 
@@ -471,9 +468,7 @@ describe("POST /api/contact — XSS payloads", () => {
     const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
 
     expect(response.status).toBe(422);
-    expect(await response.text()).toBe(
-      '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>Name is required.</li><li>A valid email address is required.</li><li>Message must be at least 15 characters.</li></ul></div>',
-    );
+    expect(await response.text()).toBe(refusal("name"));
   });
 });
 
@@ -481,17 +476,17 @@ describe("POST /api/contact — Turnstile verification", () => {
   const makeRequest = (body: URLSearchParams) =>
     new Request("https://example.com/api/contact", { method: "POST", headers: HTMX_HEADERS, body: body.toString() });
 
-  it("returns 403 when cf-turnstile-response token is missing", async () => {
+  // A tripped bot guard now answers in the *shape* of a validation refusal — same status, same
+  // one-`<li>` body naming the schema's first declared field, never the guard — so a bot cannot
+  // read which guard it hit off the response. Assert the status, not a guard-specific message.
+  it("refuses with 422 when the cf-turnstile-response token is missing", async () => {
     const c = makeTestContext(makeRequest(VALID_FORM), {} as AppEnv, BASE_TEST_CONFIG);
-    const response = await handleContact(c);
+    const response = await contactAction(c);
 
-    expect(response.status).toBe(403);
-    expect(await response.text()).toBe(
-      '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Please complete the security challenge.</p></div>',
-    );
+    expect(response.status).toBe(422);
   });
 
-  it("returns 403 when Turnstile verification fails", async () => {
+  it("refuses with 422 when Turnstile verification fails", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = async () => new Response(JSON.stringify({ success: false }));
 
@@ -500,15 +495,20 @@ describe("POST /api/contact — Turnstile verification", () => {
 
     try {
       const c = makeTestContext(makeRequest(body), {} as AppEnv, BASE_TEST_CONFIG);
-      const response = await handleContact(c);
+      const response = await contactAction(c);
 
-      expect(response.status).toBe(403);
-      expect(await response.text()).toBe(
-        '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Security verification failed. Please try again.</p></div>',
-      );
+      expect(response.status).toBe(422);
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  it("renders a guard refusal byte-identical to a validation refusal", async () => {
+    const c = makeTestContext(makeRequest(VALID_FORM), {} as AppEnv, BASE_TEST_CONFIG);
+    const response = await contactAction(c);
+
+    // `name` is the schema's first declared field — the guard names it whatever actually failed.
+    expect(await response.text()).toBe(refusal("name"));
   });
 
   it("proceeds to success when Turnstile verification passes", async () => {
@@ -525,7 +525,7 @@ describe("POST /api/contact — Turnstile verification", () => {
 
     try {
       const c = makeTestContext(makeRequest(body), {} as AppEnv, BASE_TEST_CONFIG);
-      const response = await handleContact(c);
+      const response = await contactAction(c);
 
       expect(response.status).toBe(200);
       expect(await response.text()).toBe(EXPECTED_SUCCESS_HTML);
@@ -600,21 +600,23 @@ describe("POST /api/contact — rate limiting", () => {
 });
 
 describe("POST /api/contact — honeypot", () => {
-  it("returns 400 when the surname honeypot field is filled", async () => {
-    const body = new URLSearchParams(VALID_FORM);
-    body.set("surname", "Bot");
+  // The one test that makes the honeypot hazard non-silent: `<Form>` stopped auto-rendering a decoy
+  // at forge 0.0.80 and `defineAction` stopped stripping one it was not told about at 0.0.81, so bot
+  // detection disappears without a sound unless `<Honeypot>` is composed and `honeypot:` is named.
+  // Status only — the body is byte-identical to a real validation refusal by design, and pinning it
+  // would assert a distinguishability forge deliberately does not have.
+  it("refuses when the decoy field is filled", async () => {
+    const body = new URLSearchParams(VALID_FORM_WITH_TOKEN);
+    body.set(CONTACT_DECOY, "Bot");
 
     const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
 
-    expect(response.status).toBe(400);
-    expect(await response.text()).toBe(
-      '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Unable to process the form data. Please try again.</p></div>',
-    );
+    expect(response.status).toBe(422);
   });
 
-  it("proceeds when the surname field is empty", async () => {
+  it("proceeds when the decoy field is empty", async () => {
     const body = new URLSearchParams(VALID_FORM_WITH_TOKEN);
-    body.set("surname", "");
+    body.set(CONTACT_DECOY, "");
 
     const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
 
@@ -622,7 +624,7 @@ describe("POST /api/contact — honeypot", () => {
     expect(await response.text()).toBe(EXPECTED_SUCCESS_HTML);
   });
 
-  it("proceeds when the surname field is absent", async () => {
+  it("proceeds when the decoy field is absent", async () => {
     const response = await app.request(
       "/api/contact",
       { method: "POST", headers: postHeaders(), body: VALID_FORM_WITH_TOKEN.toString() },
@@ -631,6 +633,75 @@ describe("POST /api/contact — honeypot", () => {
 
     expect(response.status).toBe(200);
     expect(await response.text()).toBe(EXPECTED_SUCCESS_HTML);
+  });
+});
+
+describe("POST /api/contact — body-read semantics", () => {
+  // `formToObject` leaves an absent field absent rather than substituting `""` (the removed
+  // `readFields` did the latter). A non-optional `phone` would therefore 422 every submission that
+  // omits the optional input — this is the test that catches it.
+  it("succeeds when the optional phone field is absent entirely", async () => {
+    const body = new URLSearchParams({
+      name: "Jane Example",
+      email: "jane@example.com",
+      message: "Valid message content for a digital product project.",
+      "cf-turnstile-response": "test-token",
+    });
+
+    const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(EXPECTED_SUCCESS_HTML);
+  });
+
+  // A repeated key reaches the schema as an array, which a scalar field refuses. `Object.fromEntries`
+  // would be last-wins and turn this into a *successful* request carrying the attacker's reply-to.
+  it("refuses a duplicated email key rather than silently taking one of them", async () => {
+    const body = new URLSearchParams({ name: "Jane Example", message: "Valid message content for a digital product project." });
+    body.append("email", "victim@example.com");
+    body.append("email", "attacker@example.com");
+    body.set("cf-turnstile-response", "test-token");
+
+    const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
+
+    expect(response.status).toBe(422);
+    expect(await response.text()).toBe(refusal("email"));
+  });
+
+  // The strict schema declares only the four real fields. Everything else the form posts is dropped
+  // because a guard consumed it: `_csrf` via `csrfFieldCtx`, the decoy and the Turnstile token
+  // because the action named them. An undeclared extra is a refusal, not a silent drop.
+  it("refuses an undeclared field", async () => {
+    const body = new URLSearchParams(VALID_FORM_WITH_TOKEN);
+    body.set("role", "admin");
+
+    const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
+
+    expect(response.status).toBe(422);
+    expect(await response.text()).toBe(refusal("role"));
+  });
+});
+
+describe("contact form — view ↔ schema contract", () => {
+  // Replaces the old rendered-field-names test. Crafted-body tests structurally cannot see view↔
+  // handler drift: they post whatever the test author typed. This one reads what the page actually
+  // renders and holds it against what the schema actually declares.
+  it("renders exactly the fields the schema declares, plus the three guard-consumed ones", async () => {
+    const res = await app.request("/", {}, MINIMUM_ENV);
+    const html = await res.text();
+
+    const rendered = [...html.matchAll(/<(?:input|textarea)\b[^>]*\bname="([^"]*)"/g)].map((m) => m[1]);
+    const declared = Object.keys(ContactSchema.entries);
+    const injected = [CSRF_FIELD_DEFAULT, CONTACT_DECOY, TURNSTILE_FIELD_DEFAULT];
+
+    expect(rendered.filter((name) => !injected.includes(name as string))).toEqual(declared);
+  });
+
+  it("renders the decoy under the app-owned name the action checks", async () => {
+    const res = await app.request("/", {}, MINIMUM_ENV);
+    const html = await res.text();
+
+    expect(html).toContain(`name="${CONTACT_DECOY}"`);
   });
 });
 
@@ -662,9 +733,7 @@ describe("POST /api/contact — edge cases", () => {
     const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
 
     expect(response.status).toBe(422);
-    expect(await response.text()).toBe(
-      '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>Contact number may only contain digits, spaces, dashes, and plus signs.</li></ul></div>',
-    );
+    expect(await response.text()).toBe(refusal("phone"));
   });
 });
 
@@ -675,22 +744,37 @@ const MOCK_LOGS_KV = {
   put: async () => {},
   delete: async () => {},
 };
+// `LOG_LEVEL` unset → `site.debug` is false → the viewer's `access` predicate denies.
 const LOGS_ENV = { ...MINIMUM_ENV, LOGS_KV: MOCK_LOGS_KV } as unknown as Env;
+const LOGS_DEBUG_ENV = { ...MINIMUM_ENV, LOGS_KV: MOCK_LOGS_KV, LOG_LEVEL: "DEBUG" } as unknown as Env;
 
 const EXPECTED_EMPTY_TBODY =
   '<tbody id="log-tbody"><tr><td colspan="5" class="py-8 text-center text-brand-500 text-sm">No log entries found.</td></tr></tbody>';
 
-describe("GET /showcase/logs — full page", () => {
-  it("returns 200 status", async () => {
+describe("GET /showcase/logs — access control", () => {
+  it("returns 403 when site.debug is false (LOG_LEVEL unset)", async () => {
     const res = await app.request("/showcase/logs", {}, LOGS_ENV);
+    expect(res.status).toBe(403);
+    expect(await res.text()).toBe("Forbidden");
+  });
+
+  it("returns 403 for the HTMX partial too", async () => {
+    const res = await app.request("/showcase/logs", { headers: { "HX-Request": "true" } }, LOGS_ENV);
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("GET /showcase/logs — full page", () => {
+  it("returns 200 status when LOG_LEVEL is DEBUG", async () => {
+    const res = await app.request("/showcase/logs", {}, LOGS_DEBUG_ENV);
     expect(res.status).toBe(200);
   });
 
-  it("renders a full HTML page with the log viewer", async () => {
-    const res = await app.request("/showcase/logs", {}, LOGS_ENV);
+  it("renders forge's own viewer page shell — the app no longer wraps it in Layout", async () => {
+    const res = await app.request("/showcase/logs", {}, LOGS_DEBUG_ENV);
     const text = await res.text();
     expect(text).toContain("<!DOCTYPE html>");
-    expect(text).toContain(">Request Log</h1>");
+    expect(text).toContain("<title>Request Log</title>");
     expect(text).toContain('hx-get="/showcase/logs"');
     expect(text).toContain(">Timestamp</th>");
     expect(text).toContain(">Level</th>");
@@ -699,7 +783,7 @@ describe("GET /showcase/logs — full page", () => {
   });
 
   it("includes required security headers", async () => {
-    const res = await app.request("/showcase/logs", {}, LOGS_ENV);
+    const res = await app.request("/showcase/logs", {}, LOGS_DEBUG_ENV);
     expect(res.headers.get("content-security-policy")).not.toBeNull();
     expect(res.headers.get("strict-transport-security")).toBe("max-age=63072000; includeSubDomains; preload");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
@@ -709,7 +793,7 @@ describe("GET /showcase/logs — full page", () => {
 
 describe("GET /showcase/logs — HTMX partial", () => {
   it("returns only the tbody fragment when HX-Request is true", async () => {
-    const res = await app.request("/showcase/logs", { headers: { "HX-Request": "true" } }, LOGS_ENV);
+    const res = await app.request("/showcase/logs", { headers: { "HX-Request": "true" } }, LOGS_DEBUG_ENV);
     expect(res.status).toBe(200);
     const text = await res.text();
     // exact match proves TBODY_ID in the partial equals the id the full page registers as swap target
@@ -717,10 +801,10 @@ describe("GET /showcase/logs — HTMX partial", () => {
   });
 
   it("does not include the full page shell in the partial response", async () => {
-    const res = await app.request("/showcase/logs", { headers: { "HX-Request": "true" } }, LOGS_ENV);
+    const res = await app.request("/showcase/logs", { headers: { "HX-Request": "true" } }, LOGS_DEBUG_ENV);
     const text = await res.text();
     expect(text).not.toContain("<!DOCTYPE html>");
-    expect(text).not.toContain(">Request Log</h1>");
+    expect(text).not.toContain("<title>Request Log</title>");
   });
 });
 
@@ -739,7 +823,7 @@ describe("POST /api/contact — email delivery failure", () => {
 
     try {
       const c = makeTestContext(makeRequest(VALID_FORM_WITH_TOKEN), {} as AppEnv, BASE_TEST_CONFIG);
-      const response = await handleContact(c);
+      const response = await contactAction(c);
 
       expect(response.status).toBe(500);
       expect(await response.text()).toBe(EXPECTED_EMAIL_ERROR_HTML);

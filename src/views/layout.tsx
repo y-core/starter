@@ -3,10 +3,11 @@
 import { assets, CoreIcon } from "@assets";
 import { rawHtml } from "@y-core/forge/http";
 import type { JSXNode } from "@y-core/forge/jsx";
-import { FOUC_SCRIPT } from "@y-core/forge/ui/chrome";
+import { FOUC_SCRIPT, Navbar } from "@y-core/forge/ui/chrome";
 import type { RenderContext } from "../app/context";
 import { site } from "../model/site.content";
 import { routes } from "../routes";
+import { primaryNav, resolveNavHref } from "./nav";
 import { ThemeToggle } from "./ui";
 
 interface LayoutProps {
@@ -73,35 +74,22 @@ export function Layout({ ctx, children }: LayoutProps) {
               <div class='min-w-0 font-display text-xl font-semibold tracking-wider text-foreground'>Forge Studio</div>
             </a>
 
-            <nav class='hidden items-center gap-8 md:flex' aria-label='Primary'>
+            {/* ThemeToggle is a NavSlot per forge's own guidance (rule:forge-ui-nav-theme-toggle-placement),
+                but it is rendered here — once, outside <Navbar> — rather than slotted in, since
+                everything inside the bar lives under PANEL_CLASS.mobile (hidden until the mobile
+                menu opens), which would hide a slotted toggle from the mobile header. Deliberate
+                override of rule:forge-ui-nav-slot-not-link. */}
+            <div class='flex items-center gap-2'>
+              <Navbar
+                id='primary-nav'
+                aria-label='Primary'
+                config={primaryNav}
+                resolveHref={resolveNavHref}
+                icon={CoreIcon}
+                class='static z-auto bg-transparent'
+              />
               <ThemeToggle />
-              <a
-                href='#contact'
-                class='rounded-full bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90'>
-                Contact
-              </a>
-            </nav>
-
-            <div class='flex items-center gap-2 md:hidden'>
-              <ThemeToggle />
-              <button
-                type='button'
-                data-ref='nav-toggle'
-                class='rounded-lg p-2 text-foreground transition hover:bg-accent'
-                aria-label='Toggle navigation'
-                aria-expanded='false'
-                aria-controls='nav-menu'>
-                <CoreIcon name='hamburger' width={22} height={22} />
-              </button>
             </div>
-          </div>
-
-          <div id='nav-menu' data-ref='nav-menu' class='hidden border-t border-border bg-background/95 px-6 py-5 md:hidden'>
-            <nav class='flex flex-col gap-5' aria-label='Mobile'>
-              <a data-ref='nav-link' href='#contact' class='text-sm font-semibold text-primary'>
-                Contact Us
-              </a>
-            </nav>
           </div>
         </header>
 
