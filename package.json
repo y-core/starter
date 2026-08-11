@@ -10,21 +10,20 @@
     "dev": "bun run build:assets && wrangler dev src/worker.dev.ts --live-reload",
     "lint": "biome check src/ tests/",
     "lint:fix": "biome check --write src/ tests/",
-    "test": "bun test tests/",
-    "_forge": "file://../forge | github:y-core/forge#v0.0.25"
+    "test": "bun test tests/"
   },
   "dependencies": {
-    "@y-core/forge": "github:y-core/forge#v0.0.25"
+    "@y-core/forge": "github:y-core/forge#v0.0.51"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.16",
-    "@tailwindcss/cli": "^4.3.0",
-    "@typescript/native-preview": "7.0.0-dev.20260602.1",
-    "esbuild": "^0.28.0",
-    "sharp": "^0.34.5",
-    "tailwindcss": "^4.3.0",
+    "@biomejs/biome": "^2.5.1",
+    "@tailwindcss/cli": "^4.3.1",
+    "@typescript/native-preview": "7.0.0-dev.20260628.1",
+    "esbuild": "^0.28.1",
+    "sharp": "^0.35.2",
+    "tailwindcss": "^4.3.1",
     "urlpattern-polyfill": "^10.1.0",
-    "wrangler": "^4.96.0"
+    "wrangler": "^4.105.0"
   },
   "overrides": {
     "ws": "^8.20.1"

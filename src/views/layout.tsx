@@ -2,8 +2,8 @@
 
 import { assets, CoreIcon } from "@assets";
 import { rawHtml } from "@y-core/forge/http";
-import type { JSXNode } from "@y-core/forge/ui";
-import { FOUC_SCRIPT } from "@y-core/forge/ui/client";
+import type { JSXNode } from "@y-core/forge/jsx";
+import { FOUC_SCRIPT } from "@y-core/forge/ui/chrome";
 import type { RenderContext } from "../app/context";
 import { site } from "../model/site.content";
 import { routes } from "../routes";

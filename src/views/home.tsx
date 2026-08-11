@@ -1,7 +1,7 @@
 /** @jsxImportSource @y-core/forge/jsx */
 
 import { CoreIcon } from "@assets";
-import { Field, Form, Input, Textarea } from "@y-core/forge/ui";
+import { Field, Form, Input, Textarea } from "@y-core/forge/ui/core";
 import type { RenderContext } from "../app/context";
 import type { HomeContent } from "../model/home.content";
 import { routes } from "../routes";
