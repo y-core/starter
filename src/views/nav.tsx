@@ -14,6 +14,7 @@ import { routes } from "../routes";
 const NAV_HREFS: Record<string, string> = {
   contact: "#contact",
   showcaseUi: routes.showcase.ui.index.href(),
+  showcaseTheme: routes.showcase.ui.theme.href(),
   showcaseLogs: routes.showcase.logs.href(),
 };
 
@@ -34,6 +35,7 @@ export const primaryNav: NavDefinition = {
           label: "Showcase",
           items: [
             { label: "Logs", href: "showcaseLogs" },
+            { label: "Theme", href: "showcaseTheme" },
             { label: "UI", href: "showcaseUi" },
           ],
         },

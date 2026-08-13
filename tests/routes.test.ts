@@ -44,9 +44,9 @@ const EMAIL_API_URL = "https://api.mailchannels.net/tx/v1/send";
 const TURNSTILE_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
 const EXPECTED_SUCCESS_HTML =
-  '<div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200" data-success><p>Thanks. We&#39;ll review your note and get back to you soon.</p></div>';
+  '<div class="rounded-2xl border border-status-success-border bg-status-success-subtle px-4 py-3 text-sm text-status-success-subtle-foreground" data-success><p>Thanks. We&#39;ll review your note and get back to you soon.</p></div>';
 const EXPECTED_EMAIL_ERROR_HTML =
-  '<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-800 dark:bg-red-950 dark:text-red-200"><p>Something went wrong. Please try again or contact us directly.</p></div>';
+  '<div class="rounded-2xl border border-status-danger-border bg-status-danger-subtle px-4 py-3 text-sm text-status-danger-subtle-foreground"><p>Something went wrong. Please try again or contact us directly.</p></div>';
 
 /**
  * The whole refusal body forge's submission pipeline renders for a body it declines: one `<li>`
@@ -55,7 +55,7 @@ const EXPECTED_EMAIL_ERROR_HTML =
  * the schema's rule — so neither the issue count nor the response length is caller-steerable.
  */
 function refusal(field: string): string {
-  return `<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-800 dark:bg-red-950 dark:text-red-200"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>${field}</li></ul></div>`;
+  return `<div class="rounded-2xl border border-status-danger-border bg-status-danger-subtle px-4 py-3 text-sm text-status-danger-subtle-foreground"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>${field}</li></ul></div>`;
 }
 
 const MOCK_ASSETS = { fetch: async () => new Response("", { status: 200 }) };
@@ -749,7 +749,7 @@ const LOGS_ENV = { ...MINIMUM_ENV, LOGS_KV: MOCK_LOGS_KV } as unknown as Env;
 const LOGS_DEBUG_ENV = { ...MINIMUM_ENV, LOGS_KV: MOCK_LOGS_KV, LOG_LEVEL: "DEBUG" } as unknown as Env;
 
 const EXPECTED_EMPTY_TBODY =
-  '<tbody id="log-tbody"><tr><td colspan="5" class="py-8 text-center text-brand-500 text-sm">No log entries found.</td></tr></tbody>';
+  '<tbody id="log-tbody"><tr><td colspan="5" class="px-4 py-4 text-center"><div class="flex flex-col items-center gap-2"><span class="text-sm text-muted-foreground">No log entries have been recorded yet.</span></div></td></tr></tbody>';
 
 describe("GET /showcase/logs — access control", () => {
   it("returns 403 when site.debug is false (LOG_LEVEL unset)", async () => {
@@ -770,11 +770,16 @@ describe("GET /showcase/logs — full page", () => {
     expect(res.status).toBe(200);
   });
 
-  it("renders forge's own viewer page shell — the app no longer wraps it in Layout", async () => {
+  // The viewer no longer builds its own document: `show.logs.tsx` hands forge this app's `Layout`,
+  // so the page arrives inside the shell that carries the dark class and the pre-paint theme script.
+  // The viewer's own heading is what identifies the page; the `<title>` belongs to the app.
+  it("renders the viewer inside the app's Layout, not a shell of forge's own", async () => {
     const res = await app.request("/showcase/logs", {}, LOGS_DEBUG_ENV);
     const text = await res.text();
     expect(text).toContain("<!DOCTYPE html>");
-    expect(text).toContain("<title>Request Log</title>");
+    expect(text).toContain("<title>Forge Studio</title>");
+    expect(text).toContain('<h1 class="text-2xl font-semibold tracking-tight text-foreground">Request Log</h1>');
+    expect(text).toContain('data-scope="theme"');
     expect(text).toContain('hx-get="/showcase/logs"');
     expect(text).toContain(">Timestamp</th>");
     expect(text).toContain(">Level</th>");

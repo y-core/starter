@@ -14,7 +14,7 @@
     "test": "bun test tests/"
   },
   "dependencies": {
-    "@y-core/forge": "file:../forge"
+    "@y-core/forge": "github:y-core/forge#v0.0.83"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.4",

@@ -6,6 +6,7 @@ describe("resolveNavHref", () => {
     ["contact", "contact", "#contact"],
     ["showcaseUi", "showcaseUi", "/showcase/ui"],
     ["showcaseLogs", "showcaseLogs", "/showcase/logs"],
+    ["showcaseTheme", "showcaseTheme", "/showcase/ui/theme"],
     ["unknown key falls back to home route", "unknown-key", "/"],
   ];
 

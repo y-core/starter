@@ -1,19 +1,17 @@
 @import "tailwindcss";
 
-/* `forge-show.css` is `forge.css` + `@source ../../show`, and `forge.css` carries `@source` paths
-   resolved relative to itself — which is what makes forge's classes reachable at all, since Tailwind
-   v4 never scans `node_modules`. It supersedes the hand-rolled theme-base/forge-ui imports and the
-   `ui/**` source globs that used to stand in for it. */
-@import "@y-core/forge/ui/assets/css/forge-show.css";
-@import "@y-core/forge/ui/assets/css/theme-slate.css";
+/* `forge.css` carries `@source` paths resolved relative to itself — which is what makes forge's
+   classes reachable at all, since Tailwind v4 never scans `node_modules`. `theme-slate.css` is
+   optional and comes after, re-declaring the twelve gray steps and nothing else. */
+@import "@y-core/forge/ui/assets/css/forge.css";
+@import "@y-core/forge/ui/assets/css/theme-gray.css";
 
 @source "../views/**/*.tsx";
 @source "../model/**/*.ts";
-/* Forge's own CSS scanning scope stops at `ui/` by decision (LIBRARY_ARCHITECTURE.md §3d), and the
-   log viewer's markup lives in `src/logging/show` — so this one glob stays. */
+/* Forge's own `@source` paths cover the components every app renders. The two opt-in surfaces:
+   the log viewer, and the component showcase this starter serves. */
 @source "../../node_modules/@y-core/forge/src/logging/**/*.tsx";
-
-@custom-variant dark (&:where(.dark, .dark *));
+@source "../../node_modules/@y-core/forge/src/ui/show/**/*.tsx";
 
 @theme {
   --font-display: Georgia, "Times New Roman", serif;

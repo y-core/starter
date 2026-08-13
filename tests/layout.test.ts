@@ -110,9 +110,10 @@ describe("Layout — nav content (Showcase menu + Contact bar link)", () => {
     expect(text).not.toContain('aria-label="Showcase"');
   });
 
-  it("nests Logs and UI as menu items inside the Showcase popover", async () => {
+  it("nests Logs, Theme and UI as menu items inside the Showcase popover", async () => {
     const text = await getHomeHtml();
     expect(text).toContain(menuItem("/showcase/logs", "Logs"));
+    expect(text).toContain(menuItem("/showcase/ui/theme", "Theme"));
     expect(text).toContain(menuItem("/showcase/ui", "UI"));
   });
 

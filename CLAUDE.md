@@ -21,6 +21,34 @@
 
 ---
 
+## Code Intelligence
+
+When tracing where a symbol is defined or finding all references to
+it, use LSP (goToDefinition, findReferences, hover) instead of Grep.
+LSP gives exact results; Grep gives text matches.
+
+Use Grep/Glob for discovery (finding files, searching patterns). Use
+LSP for understanding (definitions, references, type info).
+
+After locating a file with Grep/Glob, use LSP to navigate within it
+rather than reading the whole file.
+
+---
+
+## Ledger
+
+ledger tasks are tracked in the task-forge ledger via the `ledger` MCP tools.
+Scope is a property of the URL, so no tool takes a `project` argument.
+
+- Move a task to `doing` when you start it; call again only when its state
+  actually changes, never to narrate progress.
+- A read carries the `revision` a later edit must cite — read before you write.
+- Record the resolution with, or before, the move to `done`.
+- On a refusal, act on the payload: `rule` names what was applied, `requires`
+  names the arguments to add, `retryable` says whether the call could succeed.
+
+---
+
 ## Toolchain
 
 | Tool | Role |
