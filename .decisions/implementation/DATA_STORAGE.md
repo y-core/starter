@@ -1,7 +1,6 @@
 ---
 title: Data Storage Patterns
-description: "LOGS_KV, KV namespace, Workers KV, kvLogChannel, createKVStore, jsonCodec, binding validation, RATE_LIMITER, D1 future pattern, R2 future pattern, storage/kv, storage/db, storage/r2, wrangler bindings"
-weight: 28
+description: "The KV access patterns this app uses, binding validation at startup, and the shape a future D1 or R2 binding would take."
 ---
 
 # Data Storage Patterns
@@ -15,10 +14,28 @@ weight: 28
 ## 0. Quick Reference
 
 - §1 LOGS_KV: current KV usage via kvLogChannel, readLogs, graceful degradation
+- §1a kvLogChannel
+- §1b readLogs — Admin Log Viewer
+- §1c LOGS_KV Binding Declaration
 - §2 createKVStore: typed KV access pattern, jsonCodec, operations, TTL rules
+- §2a Typed Store with jsonCodec
+- §2b Available Codecs
+- §2c KVStore Operations
+- §2d resolveKVStore — By Binding Name
 - §3 Future D1 pattern: createD1Client, sql tag, resolveD1Client, startup validation
+- §3a createD1Client
+- §3b sql Tagged Template — Parameterized Queries
+- §3c Add DB Binding to wrangler.jsonc
+- §3d resolveD1Client — By Binding Name
 - §4 Future R2 pattern: createObjectStore, serveObject, signed URLs
+- §4a createObjectStore
+- §4b serveObject — Direct Response from R2
+- §4c Signed URLs for Restricted Object Access
+- §4d Add R2 Binding to wrangler.jsonc
 - §5 Binding validation: validateBindings at startup, graceful vs fail-fast strategies
+- §5a Graceful Degradation vs Fail-Fast
+- §5b validateBindings at Startup
+- §5c validateXBinding vs resolveXClient
 
 ---
 

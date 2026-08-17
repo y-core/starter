@@ -1,7 +1,6 @@
 ---
 title: Configuration and Secrets
-description: "AppConfigSchema, appConfig, configStore, env vars, BASE_URL, CSRF_SECRET, EMAIL_API_KEY, TURNSTILE_SECRET_KEY, dev.vars, wrangler.jsonc bindings, ASSETS, LOGS_KV, RATE_LIMITER, securityHeaders, CSP Turnstile"
-weight: 27
+description: "The AppConfigSchema fields, the environment variables and Workers bindings behind them, and how secrets reach the Worker."
 ---
 
 # Configuration and Secrets
@@ -15,11 +14,30 @@ weight: 27
 ## 0. Quick Reference
 
 - §1 AppConfigSchema: valibot schema for all env-sourced config
+- §1a Schema Structure
+- §1b AppConfig Inferred Type
 - §2 appConfig + configStore: env mapping and lazy-validated Config instance
+- §2a appConfig — Env Binding Map
+- §2b configStore — Lazy Validation
+- §2c Config Access Pattern
 - §3 Env vars: BASE_URL, CSRF_SECRET, EMAIL_*, TURNSTILE_* — required vs optional
+- §3a Required Env Vars
+- §3b Optional Env Vars
+- §3c Env Var Naming Convention
 - §4 Workers bindings: ASSETS, LOGS_KV, RATE_LIMITER — wrangler.jsonc declarations
+- §4a ASSETS Binding — Static Files
+- §4b LOGS_KV Binding — Structured Log Persistence
+- §4c RATE_LIMITER Binding — DoS Mitigation
 - §5 securityHeaders: production CSP for Turnstile, nonce, self
+- §5a Production CSP Declaration
+- §5b NONCE Sentinel
+- §5c Turnstile CSP Requirements
+- §5d Dev Entry — Live-Reload Hash
 - §6 .dev.vars: local dev secrets file, test keys, never commit
+- §6a .dev.vars Setup
+- §6b Turnstile Test Keys
+- §6c CSRF_SECRET Generation
+- §6d Production Secrets — wrangler secret
 
 ---
 

@@ -1,7 +1,6 @@
 ---
-title: "Input Validation"
-description: "ContactSchema, readFields, v.safeParse, abortEarly, honeypot, Turnstile, valibot facade, validate at boundary, form namespace, v namespace, mintCsrf, CSRF hidden input"
-weight: 24
+title: Input Validation
+description: "The contact schema, field reading, honeypot and Turnstile wiring, and the CSRF configuration this app uses."
 ---
 
 # Input Validation
@@ -15,12 +14,28 @@ weight: 24
 ## 0. Quick Reference
 
 - §1 `ContactSchema`: valibot schema for contact form fields, typed output via `InferOutput`
+- §1a Contact Form Schema Definition
+- §1b Schema Placement Convention
+- §1c Field Constraints Are User-Facing
 - §2 `readFields` + `v.safeParse`: form parsing and validation flow
+- §2a Full Handler Parse Sequence
+- §2b parseFormData vs. c.request.formData
+- §2c readFields Returns a String Record
 - §3 Bot protection: honeypot check before CSRF and Turnstile CAPTCHA
+- §3a Honeypot Field
+- §3b Turnstile CAPTCHA Verification
+- §3c Bot-Check Ordering
 - §4 CSRF token: `mintCsrf` in `renderContext` → hidden input in form → `csrfVerifyGuard`
+- §4a csrfPath → renderContext → CSRF token
+- §4b CSRF Hidden Input in Form
+- §4c csrfVerifyGuard in the Handler
 - §5 Validate-at-boundary rule: handler validates, service receives typed data only
 - §6 `v` namespace facade: import exclusively from `@y-core/forge/validation`, never valibot directly
+- §6a Import from Forge, Never from Valibot Directly
+- §6b Available Utilities via v
 - §7 `abortEarly` semantics: first error per field, clean UX for form responses
+- §7a Why abortEarly: true for Forms
+- §7b abortEarly: false for APIs
 
 ---
 
@@ -209,32 +224,8 @@ details.
 
 ## 5. Validate-at-Boundary Rule
 
-### 5a. Handlers Own Validation
-
-All input validation happens in the handler. By the time a service function is called,
-its arguments are already fully typed and validated `ContactInput` values. Services must
-never receive raw `FormData`, unvalidated strings, or `unknown` types:
-
-    // CORRECT — typed ContactInput reaches the service
-    const contact: ContactInput = parsed.output
-    await emailService.send(contact)
-
-    // WRONG — raw data passed to service
-    await emailService.send(fields)
-
-### 5b. Services Receive Types, Not Schemas
-
-Service functions declare typed parameters, not schema-based runtime validators. A service
-that accepts `ContactInput` trusts the handler has already validated. Putting `v.parse`
-calls inside services duplicates validation logic and creates ambiguity about which layer
-owns the rules.
-
-### 5c. Model Layer Owns Constraints
-
-Field constraints (min/max lengths, format rules) live in the schema in `src/model/`.
-They must not be duplicated as conditional checks in handlers (`if (name.length < 2)`)
-or as HTML `minlength` / `maxlength` attributes (those are UX hints only, not security
-controls). The schema is the authority.
+See [`BOUNDARIES.md`](../governance/BOUNDARIES.md) §3 for the validate-at-boundary rule and the
+ordered validation steps. The schema and guards each step calls are §1–§4 above.
 
 ---
 

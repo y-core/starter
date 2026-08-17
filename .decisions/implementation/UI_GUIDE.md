@@ -1,7 +1,6 @@
 ---
-title: "UI Guide"
-description: "views directory, layout component, home view, logs view, not-found view, forge ui components, HTMX patterns, Tailwind v4 @theme tokens, theme toggle, FOUC_SCRIPT, theme resumable scope, SEO JSON-LD, OG tags, mountTurnstile, Navbar component, navbar resumable scope, resume, nonce inline scripts"
-weight: 30
+title: UI Guide
+description: "The view layer and layout composition, the HTMX interaction patterns, the Tailwind theme tokens, and the theme toggle."
 ---
 
 # UI Guide
@@ -13,11 +12,30 @@ weight: 30
 ## 0. Quick Reference
 
 - §1 views/ directory: layout, home, not-found (logs rendered by adminLogsController via forge LogViewerContent)
+- §1a layout.tsx — Root Layout
+- §1b home.tsx — Home Page
+- §1c Log Viewer — adminLogsController
+- §1d not-found.tsx — 404 Page
 - §2 Layout: FOUC_SCRIPT, nonce, deferred scripts
+- §2a Nonce on All Inline Scripts
+- §2b FOUC Prevention
+- §2c Deferred Scripts and Resumable Scopes
 - §3 Home view: hero, contact form, JSON-LD, OG meta
+- §3a Contact Form HTMX Pattern
+- §3b JSON-LD and OG Meta
 - §4 HTMX patterns: hx-post, hx-target, hx-swap
+- §4a Fragment Target Pattern
+- §4b HX-Request Header Enforcement
+- §4c Turnstile Widget
+- §4d Loading Indicators
 - §5 Tailwind v4 @theme tokens: brand-*, system fonts
+- §5a @theme Block in tailwind.css
+- §5b System Font Stacks Only
+- §5c Dark Mode via Class Strategy
 - §6 Theme toggle and navbar: FOUC_SCRIPT, theme and navbar resumable scopes, resume()
+- §6a FOUC_SCRIPT Import and Placement
+- §6b Theme Resumable Scope
+- §6c Navbar Component and Navbar Resumable Scope
 
 ---
 

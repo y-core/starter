@@ -1,7 +1,6 @@
 ---
-title: "Structured Logging"
-description: "consoleChannel, kvLogChannel, LOGS_KV, requestLogger, requestId correlation, log levels, admin logs route, adminLogsController, readLogViewer, LogViewerContent, TODO auth, no PII, KV log storage"
-weight: 22
+title: Structured Logging
+description: "The channels this app installs, KV log persistence, request-id correlation, and the auth-gated log viewer."
 ---
 
 # Structured Logging
@@ -14,12 +13,20 @@ weight: 22
 ## 0. Quick Reference
 
 - §1 Channels: `consoleChannel` + `kvLogChannel` (LOGS_KV binding)
+- §1a Dual Channel Setup
+- §1b LOGS_KV Wrangler Binding
+- §1c AppEnv Typing
 - §2 Request correlation: `requestId` feeds into `requestLogger` bindings
+- §2a Middleware Order: requestId Before requestLogger
+- §2b requestId Propagation to Downstream Services
+- §2c requestId in Error Responses
 - §3 Log levels: INFO / WARN / ERROR mapped by HTTP status range
+- §3a Status-to-Level Mapping
+- §3b Structured Fields Per Record
 - §4 Admin log viewer: `/admin/logs` route, `adminLogsController` with `readLogViewer`/`LogViewerContent` from forge
+- §4a /admin/logs Route Wiring
+- §4b TODO(auth) — Authentication Required
 - §5 No-PII rule: log only method, path, status, duration, requestId
-- §6 KV schema: JSON records keyed by timestamp prefix for range queries
-- §7 Local dev fallback: console-only when LOGS_KV binding absent
 
 ---
 
@@ -174,28 +181,5 @@ the Cloudflare Access layer or omitting it from the production bundle entirely.
 
 ## 5. No-PII Rule
 
-### 5a. What May Never Appear in a Log Record
-
-Log records stored in KV are accessible to anyone with KV read access, including future
-`/admin/logs` viewers. The following data must never appear in any log field:
-
-- Email addresses or usernames
-- Names or any personally identifiable strings
-- Form field values (message body, address, phone)
-- Authentication tokens, session IDs, CSRF tokens
-- API keys, secrets, or credentials
-- IP addresses beyond what Cloudflare already strips
-
-### 5b. What Is Safe to Log
-
-- HTTP method and path (no query strings containing user data)
-- Response status code
-- Request duration in milliseconds
-- The `requestId` opaque identifier
-- Worker-internal event names (e.g., `"email_sent"`, `"turnstile_failed"`)
-
-### 5c. Enforcement
-
-Code review must verify that `bindings` factories and manual `channel.log()` calls contain
-only the fields listed in §5b. No automated linting rule exists today — this is a manual
-review gate.
+See [`BOUNDARIES.md`](../governance/BOUNDARIES.md) §4 for the no-PII rule, the prohibited field
+classes, and structured fields over string interpolation.

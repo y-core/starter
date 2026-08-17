@@ -1,24 +1,40 @@
 ---
-title: "Handler Testing"
-description: "app.request pattern, MINIMUM_ENV, bun test, tests/ directory, exact HTML assertions, toContain dynamic content, toBe static, CSRF minting POST tests, security header assertions, fail-closed expectations, globalThis.fetch stubbing"
-weight: 25
+title: Handler Testing
+description: "The minimum environment fixture and its per-field requirements, the CSRF minting recipe, and the security assertions each route needs."
 ---
 
 # Handler Testing
 
 > The app.request(path, init, env) test pattern, MINIMUM_ENV fixture, assertion rules.
-> Complements [PRODUCTION_RULES.md](./PRODUCTION_RULES.md) §6 (HTML entity rule).
+> Complements [`PRODUCTION_TS_RULES.md`](../governance/PRODUCTION_TS_RULES.md) §6 (HTML entity rule).
 
 ---
 
 ## 0. Quick Reference
 
 - §1 app.request pattern: the httptest equivalent for Workers
+- §1a Basic GET Test
+- §1b Tests Live in tests/
+- §1c MINIMUM_ENV Requirements
 - §2 MINIMUM_ENV: required bindings + config fixture
+- §2a 404 Test Variant
+- §2b Extending MINIMUM_ENV
+- §2c Shared Setup via tests/setup.ts
 - §3 Assertion rules: toBe static, toContain dynamic, entity encoding
 - §4 POST/action tests: CSRF minting, required headers
+- §4a Minting a CSRF Token
+- §4b Building the POST Request
+- §4c Stubbing globalThis.fetch for Email
+- §4d Turnstile Stub
 - §5 Security header assertions: CSP, HSTS, XCTO
+- §5a Required Header Checks
+- §5b CSP Nonce Presence
 - §6 Fail-closed expectations: 403 on missing guards
+- §6a Missing HX-Request → 403
+- §6b Wrong Origin → 403
+- §6c Invalid CSRF Token → 403
+- §6d Filled Honeypot → 400
+- §6e Rule: No 200 on Guard Failure
 
 ---
 
@@ -31,33 +47,14 @@ so bindings (KV, secrets, site key) are always under test control.
 
 ### 1a. Basic GET Test
 
-    import { describe, expect, it } from "bun:test"
-    import app from "../src/worker"
-
-    const MINIMUM_ENV = {
-      ASSETS: { fetch: async () => new Response("", { status: 200 }) },
-      BASE_URL: "https://example.com",
-      CSRF_SECRET: "de7bf4aef360e3a4c3254c9cec7e45d0f1fd98cc2219c62b5b07e826ba1bcc6e",
-      EMAIL_API_KEY: "test-api-key",
-      TURNSTILE_SECRET_KEY: "test-ts-key",
-      TURNSTILE_SITE_KEY: "test-site-key",
-    }
-
-    describe("GET /", () => {
-      it("returns 200", async () => {
-        const res = await app.request("/", {}, MINIMUM_ENV)
-        expect(res.status).toBe(200)
-      })
-    })
+See [`TESTING.md`](../governance/TESTING.md) §1 for the app-request pattern and why the composition
+root is the subject. The environment it is handed is §1c below.
 
 ### 1b. Tests Live in tests/
 
-    tests/worker.test.ts   — main GET routes, POST actions, security headers
-    tests/routes.test.ts   — route configuration
-    tests/setup.ts         — shared fixtures
-
-Unlike forge (co-located `*.test.ts` next to source), the starter keeps all tests in a dedicated
-`tests/` directory. Import paths use `"../src/..."` accordingly.
+Tests live in `tests/`, not beside their source — the placement decision
+[`TESTING.md`](../governance/TESTING.md) §2a requires be stated once and held uniformly. Import paths
+are relative to `tests/` accordingly.
 
 ### 1c. MINIMUM_ENV Requirements
 
@@ -122,52 +119,9 @@ Do not duplicate the fixture inline — if `CSRF_SECRET` needs rotation it shoul
 
 ## 3. Assertion Rules
 
-### 3a. toBe for Static Headers
-
-Security headers are deterministic strings. Use strict equality (`toBe`), never `toContain`.
-
-    expect(res.headers.get("x-content-type-options")).toBe("nosniff")
-    expect(res.headers.get("x-frame-options")).toBe("DENY")
-    expect(res.headers.get("referrer-policy")).toBe("strict-origin-when-cross-origin")
-    expect(res.headers.get("strict-transport-security")).toBe(
-      "max-age=63072000; includeSubDomains; preload",
-    )
-
-### 3b. toContain for Dynamic HTML (Nonce)
-
-Full-page HTML contains a per-request nonce injected into `<script>` tags by `makeSecurityHeaders`.
-The nonce changes every request, making the full document non-deterministic. Use `toContain` for
-stable structural fragments.
-
-    const text = await res.text()
-    expect(text).toContain("<title>Forge Studio</title>")
-    expect(text).toContain('<section id="home"')
-    expect(text).toContain('<form id="contact-form"')
-
-Never assert `expect(text).toBe(fullPageSnapshot)` — nonce drift will break the test on every run.
-
-### 3c. HTML Entity Encoding
-
-The forge JSX runtime escapes special characters. Test assertions must use the encoded forms. See
-[PRODUCTION_RULES.md](./PRODUCTION_RULES.md) §6 for the full entity table.
-
-    // CORRECT
-    expect(text).toContain("&amp;")
-    expect(text).toContain("&#39;")
-    expect(text).toContain("&lt;script&gt;")
-
-    // WRONG — will never match
-    expect(text).toContain("&")
-    expect(text).toContain("'")
-    expect(text).toContain("<script>")
-
-### 3d. Status Codes are toBe
-
-HTTP status is always an integer constant. Use `toBe`, not `toBeGreaterThanOrEqual`.
-
-    expect(res.status).toBe(200)
-    expect(res.status).toBe(403)
-    expect(res.status).toBe(404)
+See [`TESTING.md`](../governance/TESTING.md) §3 for the exact-match rule, the entity encoding map,
+the normalise-then-assert-exactly treatment of per-request values, and the requirement that
+headers and statuses be asserted exactly.
 
 ---
 
@@ -346,6 +300,5 @@ Write explicit tests for each rejection path so regressions are caught before de
 
 ### 6e. Rule: No 200 on Guard Failure
 
-If a test expects a guard to fire but gets 200, the guard has a logic hole. Treat unexpected 200
-responses from guarded routes as test failures requiring root-cause investigation — do not adjust
-the assertion to match.
+See [`TESTING.md`](../governance/TESTING.md) §5d: an unexpected 200 from a guarded route is a defect
+in the guard, never an assertion to adjust.

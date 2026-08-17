@@ -4,13 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:assets": "bun run node_modules/@y-core/forge/src/assets/cli/bin.ts build all --minify --config src/assets/config.ts --out .forge/assets.ts",
+    "build:assets": "bun run node_modules/@y-core/forge/src/assets/cli/bin.ts build all --minify --root . --config src/assets/config.ts --out .forge/assets.ts",
     "cf:typecheck": "wrangler types ./.types/cloudflare.d.ts --no-include-env && wrangler types ./.types/worker-configuration.d.ts --no-include-runtime",
     "check": "bun run cf:typecheck && bun run gen:asset-types && tsgo --noEmit && bun run lint && bun test tests/",
-    "gen:asset-types": "bun run node_modules/@y-core/forge/src/assets/cli/bin.ts types --config src/assets/config.ts --out .forge/assets.ts",
+    "gen:asset-types": "bun run node_modules/@y-core/forge/src/assets/cli/bin.ts types --root . --config src/assets/config.ts --out .forge/assets.ts",
     "dev": "bun run build:assets && wrangler dev src/worker.dev.ts --live-reload",
     "lint": "biome check src/ tests/",
     "lint:fix": "biome check --write src/ tests/",
+    "@y-core/forge": "https://codeload.github.com/y-core/forge/tar.gz/refs/tags/v0.0.85",
+    "@y-core/forge1": "file:../forge",
     "test": "bun test tests/"
   },
   "dependencies": {

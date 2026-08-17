@@ -1,9 +1,13 @@
-do a comprehensive review of the current uncomitted changes in this repository.
+Do a comprehensive review of the current uncommitted changes in this repository.
 
-using .claude/agents/cc-plan.md following the guidance in .decisions/CODE_REVIEW.md   
-- critically assess whether the code is secure, bullet-proof and production-ready
-- consider how the system flows to deliver a world-class architected design and architecture.
-- ensure that the code patterns are efficient and effective and naturally avoid technical debt. 
-- also specifically inspect attack vectors that can be exploited. 
-- it needs to be production-ready and exploit-resistant.
-- this is initial release; no regression, backward compatability aor shims required or allowed - if any found, point them out
+Use `.claude/agents/cc-plan.md`, following the guidance in
+`.decisions/governance/CODE_REVIEW.md`. Establish a green baseline first (§1a) so pre-existing
+failures are not attributed to these changes. Work its tiers in order, verify every finding per
+§5 before reporting it, and classify per §4. Check §6 before reporting anything that looks wrong.
+
+- Critically assess whether the changes are secure, bullet-proof, and production-ready.
+- Consider how they fit the surrounding architecture, not only whether they work in isolation.
+- Ensure the patterns are efficient and effective, and naturally avoid technical debt.
+- Specifically inspect attack vectors the changes introduce or widen.
+- This is a pre-1.0 release: no regression shims, no backward-compatibility paths. If you find
+  any, report them as blocking.

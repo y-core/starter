@@ -1,7 +1,6 @@
 ---
 title: Architecture Guide
-description: "createWorker factory, composition root, layer stack, DI via Config, dev prod entry split, live-reload CSP hash, leverage forge, app config context middleware, routes handlers services views, feature development sequence"
-weight: 15
+description: "The createWorker composition root, this app's layer directories, the dev and production entry split, and typed config access."
 ---
 
 # Architecture Guide
@@ -9,7 +8,7 @@ weight: 15
 > Authoritative source for forge-starter's layer structure, composition root,
 > factory pattern, and feature development sequence.
 >
-> Complements [PRODUCTION_RULES.md](./PRODUCTION_RULES.md) (coding rules),
+> Complements [`PRODUCTION_TS_RULES.md`](../governance/PRODUCTION_TS_RULES.md) (coding rules),
 > [MIDDLEWARE_AND_CONTEXT.md](./MIDDLEWARE_AND_CONTEXT.md) (middleware ordering),
 > [ROUTING.md](./ROUTING.md) (route definitions).
 
@@ -18,9 +17,20 @@ weight: 15
 ## 0. Quick Reference
 
 - §1 createWorker factory: composition root, dev/prod entry split
+- §1a createWorker(security) — Composition Root
+- §1b Composition Order Inside createWorker
+- §1c Production Default Export
 - §2 Layer stack: worker → app/ → routes → handlers → services → views → model
+- §2a Source Layer Structure
+- §2b Layer Dependency Rules
+- §2c No Layer Skipping — Handler → Service Boundary
 - §3 DI via Config: configStore.get(c.env), AppEnv bindings
+- §3a configStore.get(c.env) — Typed Config Access
+- §3b AppEnv and AppContext — Type Parameters
+- §3c renderContext — Per-Request Presentation State
 - §4 Dev/prod CSP split: live-reload hash in worker.dev.ts only
+- §4a src/worker.dev.ts — Dev Entry Point
+- §4b Why the Hash Is Dev-Only
 - §5 Leverage forge first rule: consume forge namespaces before writing app code
 - §6 Feature development sequence: 7-step order
 
@@ -208,105 +218,12 @@ When Wrangler is upgraded and the injected script changes, update only
 
 ## 5. Leverage Forge First Rule
 
-### 5a. Check Forge Namespaces Before Writing App Code
-
-Before implementing any cross-cutting concern, check whether forge already provides it:
-
-| Need | Forge namespace |
-|---|---|
-| CSRF protection and minting | `@y-core/forge/form` |
-| Security headers (CSP, nonce) | `@y-core/forge/security` |
-| HTML escaping, fragment responses | `@y-core/forge/http` |
-| Structured request logging | `@y-core/forge/logging` |
-| Input validation (valibot wrapper) | `@y-core/forge/validation` |
-| Rate limiting | `@y-core/forge/security` (`rateLimit`) |
-| Origin verification | `@y-core/forge/security` (`verifyOrigin`) |
-| App factory and asset serving | `@y-core/forge/app` |
-| Declarative routing | `@y-core/forge/router` |
-| Config validation and access | `@y-core/forge/config` |
-
-App-layer code (this repo) provides: `AppConfigSchema`, `AppEnv`, `securityHeaders`,
-`routes`, domain-specific view components, handlers, and services. It does not
-re-implement transport, security, or utility patterns already present in forge.
-
-### 5b. When App Code Is Appropriate
-
-Write app-layer code when the concern is:
-
-- **Domain-specific** — business logic unique to this product (e.g., contact form handling)
-- **Configuration** — binding forge utilities to this app's env vars and schemas
-- **View rendering** — JSX components that produce HTML for this app's pages
-- **Integration wiring** — connecting forge primitives to external services (email, turnstile)
+See [`FORGE_CONSUMPTION.md`](../governance/FORGE_CONSUMPTION.md) §1 for the leverage-the-library-first
+rule, the capability classes forge owns, and the four categories that legitimately stay app code.
 
 ---
 
 ## 6. Feature Development Sequence
 
-### 6a. 7-Step Order
-
-Follow this sequence when adding any new feature. Never skip or reorder steps.
-
-1. **Model** — define types in `src/model/` (valibot schema + inferred TypeScript types)
-2. **Service** — implement external integrations in `src/services/` using the model types
-3. **Controller** — in `src/controllers/`: render handlers use `definePage({ loader, view })` from `@y-core/forge/app`; the loader marshals `renderContext` + data, the view calls `renderPage()` from `@y-core/forge/render`;
-   mutation handlers parse form data → validate against schema → call service → return a `fragmentResponse` (forge fragment helpers)
-4. **View** — write the JSX component in `src/views/` accepting typed props from the model (page views own `<Layout>`)
-5. **Route** — add a route entry to `src/routes.ts`; bind handler + middleware in `src/router.tsx` via `createController`
-6. **Middleware** — add or reuse guard sentinels in `src/app/middleware.ts` if the route
-   needs CSRF, rate limiting, origin check, or method enforcement
-7. **Tests** — write tests in `tests/` using the `app.request(...)` pattern against the
-   full composition root
-
-### 6b. Handler Structure Pattern
-
-A well-formed action handler follows parse → validate → act → respond:
-
-    export async function handleContact(context: RequestContext): Promise<Response> {
-      const c = context as AppContext
-      const config = c.config
-      const formData = await parseFormData(c)
-      const result = validateContact(formData)
-      if (!result.ok) return fragmentResponse(renderValidationErrors(result.errors), 422)
-      const sent = await emailService.send(result.data, config.services.email)
-      if (!sent.ok) return fragmentResponse(renderError("Something went wrong."), 500)
-      return fragmentResponse(renderSuccess("Message sent!"))
-    }
-
-Full-page controllers use `definePage` with a `loader` and a `view`; the view calls `renderPage`:
-
-    // src/controllers/home.tsx
-    export const homeController = {
-      middleware: [csrfVerifyGuard],
-      handler: definePage<AppEnv, AppConfig, HomeData>({
-        cache: "no-store",
-        loader: async (c, config) => ({
-          ctx: await renderContext(c, config, routes.contact.href()),
-          content,
-        }),
-        view: (_c, _cfg, state) =>
-          renderPage(<HomeView ctx={state.data.ctx} content={state.data.content} />),
-      }),
-    }
-
-    // src/views/home.tsx — the view owns its Layout composition
-    export function HomeView({ ctx, content }: HomeViewProps) {
-      return <Layout ctx={ctx}>{/* …main… */}</Layout>
-    }
-
-Keep handlers thin. If validation or service logic grows complex, extract it to the
-model or service layer respectively.
-
-### 6c. Test Pattern — app.request Against Composition Root
-
-Tests import the production app (or a test-configured variant) and call `app.request`:
-
-    import app from "../src/worker"
-
-    test("GET / returns 200", async () => {
-      const res = await app.request("/")
-      expect(res.status).toBe(200)
-    })
-
-For routes that require CSRF or auth middleware, construct valid tokens using the same
-forge utilities the app uses. Test against exact HTML assertions, never substring
-matching. Account for HTML-encoded entities in assertion strings.
+See [`APP_ARCHITECTURE.md`](../governance/APP_ARCHITECTURE.md) §5 for the feature development sequence
+and the parse-validate-act-respond handler shape. This app's concrete layer directories are §2.

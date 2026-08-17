@@ -1,7 +1,6 @@
 ---
-title: "Error Handling"
-description: "renderError, renderSuccess, renderValidationErrors, htmlResponse, HTMX fragment, fail-closed, 503 service unavailable, contactGuard 403, error taxonomy, expected unexpected infrastructure"
-weight: 23
+title: Error Handling
+description: "The fragment renderers this app calls, its HTMX target pattern, and the status each class of failure returns."
 ---
 
 # Error Handling
@@ -15,12 +14,21 @@ weight: 23
 ## 0. Quick Reference
 
 - §1 Fragment renderers: `renderError`, `renderSuccess`, `renderValidationErrors`
+- §1a renderError for Action Failures
+- §1b renderSuccess for Completed Actions
+- §1c renderValidationErrors for Form Field Errors
 - §2 `htmlResponse`: full-page HTML wrapping for JSX views
+- §2a renderPage for Full-Page Handler Views
+- §2b Never Mix renderPage with HTMX Fragment Routes
 - §3 Fail-closed posture: guards reject immediately, no silent fallback
 - §4 Error taxonomy: expected, unexpected, infrastructure — distinct handling paths
 - §5 HTMX target pattern: result `<div>` receives fragment swaps via `outerHTML`
+- §5a Result Div as Fragment Swap Target
+- §5b Error Fragment Structure
+- §5c Test Assertions for Fragment Output
 - §6 Status codes: 4xx for client errors, 5xx for service failures
-- §7 forge error boundary: catches unhandled throws, returns 500 (fail-closed by construction)
+- §6a Catch-All for Unhandled Throws
+- §6b Never Return Stack Traces to Clients
 
 ---
 
@@ -107,88 +115,16 @@ produces broken UI.
 
 ## 3. Fail-Closed Posture
 
-### 3a. Guards Reject Immediately
-
-Every security guard (`contactGuard`, `csrfVerifyGuard`, honeypot check) returns
-an error response on any check failure. There is no fallback, retry, or silent skip path.
-If the guard cannot confirm validity, it rejects:
-
-    const guardResult = await contactGuard(c, formData, config)
-    if (!guardResult.ok) return guardResult.response
-
-The pattern is intentional: partial guard execution that silently continues would be a
-security regression. See [MIDDLEWARE_AND_CONTEXT.md](./MIDDLEWARE_AND_CONTEXT.md) §3 for
-the full guard composition.
-
-### 3b. No Silent Error Swallowing
-
-Do not catch errors in guards or validation to return a success response. Code like the
-following is prohibited:
-
-    // WRONG — swallows errors, silently succeeds
-    try {
-      await verifyTurnstile(...)
-    } catch {
-      // continue anyway
-    }
-
-If verification throws unexpectedly, let it propagate to forge's error boundary
-(§7) which returns 500. A failed CAPTCHA check is better exposed as a 500 than silently
-bypassed.
-
-### 3c. 403 for Policy Violations
-
-Security guard rejections use HTTP 403 (Forbidden), not 400 (Bad Request). The distinction
-matters for WAF logging and rate-limiting rules:
-
-    return renderError(c, "Request blocked", { status: 403 })
+See [`BOUNDARIES.md`](../governance/BOUNDARIES.md) §5 for the fail-closed posture, the ban on
+swallowing a verification error, and [`BOUNDARIES.md`](../governance/BOUNDARIES.md) §2d for why a
+policy violation is 403 rather than 400.
 
 ---
 
 ## 4. Error Taxonomy
 
-### 4a. Expected Errors — Validation and Business Logic
-
-Definition: errors that occur during normal operation due to invalid or incomplete user
-input, or business rule violations.
-
-Examples: missing required fields, email format invalid, message too short, duplicate
-submission.
-
-Handling: `renderValidationErrors` (field errors) or `renderError` with 4xx status
-(business rule failures). These are not logged at ERROR level — they are WARN or omitted
-from application logs since they are user-generated.
-
-### 4b. Unexpected Errors — Programming Defects
-
-Definition: errors caused by bugs, type mismatches, or unreachable code paths that should
-never occur in correct operation.
-
-Examples: `TypeError`, `ReferenceError`, `null` dereference, assertion failure.
-
-Handling: let them propagate unhandled. forge's error boundary catches them and
-returns HTTP 500 (fail-closed, never exposes internals). These are logged at ERROR level
-with a stack trace. Fix them; do not handle them defensively in application code.
-
-### 4c. Infrastructure Errors — External Service Failures
-
-Definition: errors caused by transient or permanent unavailability of external systems
-(email API, KV, Turnstile endpoint).
-
-Examples: email API returns 5xx, KV write times out, Turnstile endpoint unreachable.
-
-Handling: catch at the service call site, log at ERROR level with the `requestId`, and
-return `renderError` with status 503:
-
-    try {
-      await emailService.send(contact)
-      return renderSuccess(c, "Message sent! We'll be in touch soon.")
-    } catch (err) {
-      // Log err with requestId via channel before returning
-      return renderError(c, "Service temporarily unavailable. Please try again later.", { status: 503 })
-    }
-
-Never expose raw error messages or stack traces to the client in the 503 response body.
+See [`ERROR_HANDLING.md`](../governance/ERROR_HANDLING.md) §5 for the three-way taxonomy — expected,
+unexpected, infrastructure — and what each returns and logs.
 
 ---
 

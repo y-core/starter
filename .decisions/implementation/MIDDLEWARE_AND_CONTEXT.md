@@ -1,7 +1,6 @@
 ---
 title: Middleware and Context
-description: "registerMiddleware, middleware ordering, makeSecurityHeaders, requestId, requestLogger, CORS, AppEnv, Bindings, Variables, CsrfContext, RequestIdContext, LoggerContext, SecureHeadersContext, contactGuard, rateLimitGuard, csrfVerifyGuard, renderContext"
-weight: 21
+description: "The registered middleware chain, the guard sentinels each route composes, and the typed context accessors this app reads."
 ---
 
 # Middleware and Context
@@ -17,13 +16,27 @@ weight: 21
 ## 0. Quick Reference
 
 - §1 registerMiddleware: ordering (security → requestId → logging → CORS)
+- §1a Middleware Ordering
+- §1b makeSecurityHeaders — CSP and Nonce
+- §1c requestId — X-Request-Id Propagation
+- §1d requestLogger — Channel Selection
+- §1e CORS: /api/* Only
 - §2 AppEnv / AppContext: Bindings (Env), render method, ForgeAppContext
+- §2a AppEnv — Bindings Type
+- §2b Context Variables — Typed Accessors
+- §2c AppContext Type
+- §2d Accessing Context Variables
+- §2e Config Access Pattern
 - §3 Route guards: contactGuard, rateLimitGuard, csrfVerifyGuard
+- §3a contactGuard
+- §3b rateLimitGuard
+- §3c csrfVerifyGuard
+- §3d Guard Ordering on /api/contact
 - §4 renderContext: per-request presentation values (nonce, csrfToken, baseUrl, turnstile)
-- §5 Context accessors: getNonce, requestIdCtx.getOptional — never reach into raw context
-- §6 CORS scope: /api/* only, allowedOrigins from config, not hardcoded
-- §7 Guard ordering: cheap checks first (method/origin/header), expensive last (HMAC)
-- §8 required: false on optional bindings — degrades gracefully, never skips security
+- §4a renderContext Function
+- §4b RenderContext Type
+- §4c mintCsrf Scope
+- §4d nonce Propagation to Views
 
 ---
 
@@ -53,7 +66,7 @@ reads the request ID from context when building log entries.
 
 The `security` argument (`SecurityHeadersOptions`) is constructed in `worker.ts` (prod) and
 `worker.dev.ts` (dev). Dev adds the Wrangler live-reload hash to `scriptSrc`. See
-[PRODUCTION_RULES.md](./PRODUCTION_RULES.md) §4c for the only allowed prod/dev divergence.
+[`APP_ARCHITECTURE.md`](../governance/APP_ARCHITECTURE.md) §1c for why the divergence is a separate entry module rather than a runtime flag.
 
 ### 1c. requestId — X-Request-Id Propagation
 
@@ -230,7 +243,7 @@ Guards execute left-to-right. Order reflects cost and specificity:
 3. `csrfVerifyGuard` — Web Crypto HMAC verification; most expensive, last to run.
 
 This ordering minimises compute on abusive or malformed requests. See
-[PRODUCTION_RULES.md](./PRODUCTION_RULES.md) §8 for the fail-closed requirement.
+[`BOUNDARIES.md`](../governance/BOUNDARIES.md) §2c for the ordering rule and §5 for the fail-closed requirement.
 
 ---
 

@@ -1,9 +1,13 @@
-do a very comprehenside code review of the codebase. 
+Do a comprehensive code review of the codebase.
 
-using .claude/agents/cc-plan.md following the guidance in .decisions/CODE_REVIEW.md   
-- critically assess whether the code is secure, bullet-proof and production-ready
-- consider how the system flows to deliver a world-class architected design and architecture.
-- ensure that the code patterns are efficient and effective and naturally avoid technical debt. 
-- also specifically inspect attack vectors that can be exploited. 
-- it needs to be production-ready and exploit-resistant.
-- this is initial release; no regression, backward compatability aor shims required or allowed - if any found, point them out
+Use `.claude/agents/cc-plan.md`, following the guidance in
+`.decisions/governance/CODE_REVIEW.md`. Work its tiers in order — §3a gated, §3b ripgrep with
+triage, §3c judgement — verify every finding per §5 before reporting it, and classify per §4.
+Check §6 before reporting anything that looks wrong; several correct patterns are listed there.
+
+- Critically assess whether the code is secure, bullet-proof, and production-ready.
+- Consider how the system flows, and whether the architecture holds together as a whole.
+- Ensure the patterns are efficient and effective, and naturally avoid technical debt.
+- Specifically inspect attack vectors that could be exploited; it must be exploit-resistant.
+- This is a pre-1.0 release: no regression shims, no backward-compatibility paths. If you find
+  any, report them as blocking.

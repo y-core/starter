@@ -13,11 +13,15 @@
 - NEVER commit secrets, credentials, or `.env` files
 - ALWAYS validate user input at system boundaries; sanitize file paths (prevent `../` traversal)
 - ALWAYS ensure implementations leverage `@y-core/forge/security` (`makeSecurityHeaders`)
-- ALWAYS run `bun run check` after making code changes
+- ALWAYS run local verification after changes — **delegate every gate run to `cc-tester`** (see _Verification Delegation_)
+- ALWAYS report a command's exit status with the one canonical suffix — never a variant (see _Shell Exit Checks_)
 - ALWAYS account for HTML-encoded entities in test assertions for HTML output
 - ALWAYS enforce exact-match test assertions — never substring matching
 - Use native `rg` (ripgrep) for content search and `find` for file search
 - NEVER provide deprecation shims or backward-compatible patterns before v1.0.0
+- NEVER write a comment outside the budget in `governance/PRODUCTION_TS_RULES.md` §5 — one line of TSDoc per export, the `@public`/`@internal` tags, and the rare inline *why*. Nothing else
+- ALWAYS declare a route's guards in its middleware list, never inline in the handler
+- **Governance is overwrite-on-sync.** Never edit `.decisions/governance/**`; it is byte-identical across every forge application, and an in-place edit is silently reverted by the next sync. A local ruling goes in `.decisions/implementation/**` (`governance/AGENT_GUIDE.md` §6d)
 
 ---
 
@@ -70,6 +74,34 @@ bun run test          # tests
 
 **Avoid:** `tsc` (use `tsgo`), `npm`/`pnpm`/`yarn` (use `bun`), `eslint`/`prettier` (use `biome`).
 
+### Shell Exit Checks
+
+When a command's exit status must be stated explicitly, append **exactly** this suffix — same
+spelling, same casing, same quoting, every time:
+
+```bash
+<command>; echo "EXIT:$?"
+```
+
+- Use `;`, never `&&` — with `&&` the echo is skipped precisely when the command fails, which is
+  the only case worth checking.
+- Never pipe within the same statement; redirect to a file first, then inspect it.
+- Never invent a variant — `exit=$?`, `RC=$?`, or a re-quoted spelling all miss the allowlist and
+  cost a fresh permission prompt each time.
+
+**There is exactly one permitted spelling, and `.claude/settings.local.json` allows exactly that
+one.**
+
+### Verification Delegation
+
+**`cc-tester` is the sole runner** of the verification gate and any cross-cutting suite. It returns
+a terse verdict — `✓ green`, or `✗` with the failing step and a minimal excerpt — **never the full
+stream**. `cc-plan`, `cc-dev`, and `cc-doc` delegate every gate run to it; `cc-test` may smoke-run
+only the single test file it just wrote.
+
+On failure the **owning** agent fixes and re-delegates — the gate never re-runs inside the agent
+that owns the fix, and `cc-tester` never edits the code it judges.
+
 ---
 
 ## Architecture
@@ -96,29 +128,40 @@ bun run test          # tests
 
 ## Guide Index
 
-> Before writing code, consult the relevant governing document:
+> Before writing code, consult the relevant governing document. Each begins with a
+> `## 0. Quick Reference` listing every section, so you can pick a section without reading the
+> whole file.
+>
+> **Two tables, two directories.** `governance/` holds the portable rules shared with every forge
+> application and is overwritten on sync; `implementation/` holds this app's own decisions and is
+> never touched by a sync ([`AGENT_GUIDE.md`](.decisions/governance/AGENT_GUIDE.md) §6d).
 
-- [`AGENT_GUIDE.md`](.decisions/AGENT_GUIDE.md): document structure rules, section numbering, frontmatter, cross-reference format
-- [`ARCHITECTURE_GUIDE.md`](.decisions/ARCHITECTURE_GUIDE.md): createWorker factory, layer stack, DI via Config, dev/prod CSP split
-- [`PRODUCTION_RULES.md`](.decisions/PRODUCTION_RULES.md): six rules — no globals, validate at boundary, leverage forge, dev mirrors prod
-- [`MIDDLEWARE_AND_CONTEXT.md`](.decisions/MIDDLEWARE_AND_CONTEXT.md): middleware ordering, AppEnv, route guards, renderContext
-- [`STRUCTURED_LOGGING.md`](.decisions/STRUCTURED_LOGGING.md): channels, KV log persistence, requestId correlation, log viewer
-- [`ERROR_HANDLING.md`](.decisions/ERROR_HANDLING.md): fragment renderers, fail-closed posture, error taxonomy
-- [`INPUT_VALIDATION.md`](.decisions/INPUT_VALIDATION.md): ContactSchema, readFields, v.safeParse, honeypot, Turnstile, CSRF
-- [`HANDLER_TESTING.md`](.decisions/HANDLER_TESTING.md): app.request pattern, MINIMUM_ENV, CSRF minting, security assertions
-- [`ROUTING.md`](.decisions/ROUTING.md): route definitions, guard checklist, adding new routes
-- [`CONFIGURATION_AND_SECRETS.md`](.decisions/CONFIGURATION_AND_SECRETS.md): AppConfigSchema, env vars, Workers bindings, .dev.vars
-- [`DATA_STORAGE.md`](.decisions/DATA_STORAGE.md): KV patterns, future D1/R2, binding validation
-- [`UI_GUIDE.md`](.decisions/UI_GUIDE.md): views/, layout, HTMX patterns, Tailwind v4 @theme tokens, theme toggle
-- [`WEB_DESIGN.md`](.decisions/WEB_DESIGN.md): Workers runtime model, ctx.waitUntil, rate limiting, deploy safety
-- [`CODE_REVIEW.md`](.decisions/CODE_REVIEW.md): review checklists, layer compliance, forge consumption, severity calibration
+### Governance — portable, overwrite-on-sync
 
----
+- [`AGENT_GUIDE.md`](.decisions/governance/AGENT_GUIDE.md): how `.decisions/` docs are structured, numbered, sized, and cross-referenced; the governance/implementation boundary; the single-home rule
+- [`APP_ARCHITECTURE.md`](.decisions/governance/APP_ARCHITECTURE.md): the composition root, the layer stack and its dependency rules, DI through config, concern-first placement, the feature sequence
+- [`FORGE_CONSUMPTION.md`](.decisions/governance/FORGE_CONSUMPTION.md): leverage forge first, never bypass its facade, local workaround versus upstream change, upgrading
+- [`WORKERS_PLATFORM.md`](.decisions/governance/WORKERS_PLATFORM.md): the isolate model, post-response work, rate limiting, deploy safety and secrets, static assets
+- [`PRODUCTION_TS_RULES.md`](.decisions/governance/PRODUCTION_TS_RULES.md): six coding rules — zero global state, explicit errors, validation first, testability, **the comment budget (§5)**, declarative style
+- [`BOUNDARIES.md`](.decisions/governance/BOUNDARIES.md): SSR versus browser, middleware ordering and guard placement, validate-at-boundary, no-PII logging, fail-closed
+- [`ERROR_HANDLING.md`](.decisions/governance/ERROR_HANDLING.md): the one `Result` primitive, failures crossing a layer, fragment versus page, the error taxonomy
+- [`TESTING.md`](.decisions/governance/TESTING.md): the app-request pattern, the environment fixture, exact-match assertions, fail-closed expectations, the gate
+- [`CODE_REVIEW.md`](.decisions/governance/CODE_REVIEW.md): blocking invariants, tiered detection with a command per rule, severity calibration, known false positives
 
-## Design System
+### Implementation — this app only
 
-> See [UI_GUIDE.md](.decisions/UI_GUIDE.md) for the complete design system documentation:
-> color palette (@theme tokens), typography (system stacks), SVG illustrations, HTMX patterns, and theme toggle.
+- [`ARCHITECTURE_GUIDE.md`](.decisions/implementation/ARCHITECTURE_GUIDE.md): the `createWorker` composition root, this app's layer directories, the dev/prod CSP split, typed config access
+- [`MIDDLEWARE_AND_CONTEXT.md`](.decisions/implementation/MIDDLEWARE_AND_CONTEXT.md): the registered middleware chain, the guard sentinels each route composes, the typed context accessors
+- [`ROUTING.md`](.decisions/implementation/ROUTING.md): the route map, the controller binding, the guard checklist a new route must satisfy
+- [`INPUT_VALIDATION.md`](.decisions/implementation/INPUT_VALIDATION.md): the contact schema, field reading, honeypot and Turnstile wiring, the CSRF configuration
+- [`ERROR_HANDLING.md`](.decisions/implementation/ERROR_HANDLING.md): the fragment renderers this app calls, its HTMX target pattern, forge's error boundary
+- [`STRUCTURED_LOGGING.md`](.decisions/implementation/STRUCTURED_LOGGING.md): the channels this app installs, KV persistence, request-id correlation, the admin log viewer
+- [`CONFIGURATION_AND_SECRETS.md`](.decisions/implementation/CONFIGURATION_AND_SECRETS.md): the `AppConfigSchema` fields, the env vars and bindings behind them, how secrets reach the Worker
+- [`DATA_STORAGE.md`](.decisions/implementation/DATA_STORAGE.md): the KV access patterns this app uses, binding validation, the shape a future D1 or R2 binding would take
+- [`HANDLER_TESTING.md`](.decisions/implementation/HANDLER_TESTING.md): the minimum environment fixture and its per-field requirements, the CSRF minting recipe, the security assertions
+- [`WEB_DESIGN.md`](.decisions/implementation/WEB_DESIGN.md): this app's Workers bindings and their limits, the asset build outputs, the wrangler configuration
+- [`UI_GUIDE.md`](.decisions/implementation/UI_GUIDE.md): the view layer and layout composition, HTMX patterns, Tailwind theme tokens, the theme toggle
+- [`CODE_REVIEW.md`](.decisions/implementation/CODE_REVIEW.md): this app's layer-compliance and forge-consumption checklists, its security review points, the do-not-flag table
 
 ---
 
@@ -129,21 +172,13 @@ bun run test          # tests
 - Do NOT install or use `bun-types` — it overrides DOM's `fetch` type with Bun-specific properties
 - `@types/bun` is NOT a dependency; the custom stub covers all test needs
 
-**Note:** `tsconfig.json` has a `paths` alias (`@y-core/forge/*`) pointing to the host filesystem path. This is a Zed editor workaround (host path differs from Docker container path). In practice it governs bun run check resolution — which verifies cross-repo changes end-to-end before git releases.
+**Note:** `tsconfig.json` has a `paths` alias (`@y-core/forge/*`) pointing to the host filesystem path. This is a Zed editor workaround (host path differs from Docker container path). In practice it governs `bun run check` resolution — which verifies cross-repo changes end-to-end before git releases.
 
-## Development Phase Guide
+---
 
-Invoke the right agent for each phase. Each agent reads its paired rules file first.
+## Agents
 
-| Phase | Agent | Rules | When |
-|-------|-------|-------|------|
-| Analysis & Design | `cc-plan` | `.claude/rules/r-plan.md` | Before any code — layer placement, "leverage forge" check, architecture |
-| Implementation | `cc-dev` | `.claude/rules/r-code.md` | After plan approved — write code in correct layers, consume forge namespaces |
-| Testing | `cc-test` | `.claude/rules/r-test.md` | After implementation — app.request tests, security pass+fail |
-| Architecture Review | `cc-plan` | `.claude/rules/r-plan.md` | After tests pass — refactor planning |
-
-Agent flow: `cc-plan` → `cc-dev` → `cc-test` → (if issues) back to `cc-plan`
-
-`cc-doc` (documentation) operates outside the plan→dev→test pipeline. Reusable slash-commands live in `.claude/commands/` (`c-review`, `c-unreview`).
-
-Agents and rules live in `.claude/agents/` and `.claude/rules/`.
+Five agents, with their rulesets inlined: `cc-plan` → `cc-dev` → `cc-test`, with `cc-doc` outside
+that pipeline and `cc-tester` as the sole gate runner (_Verification Delegation_ above). They live
+in `.claude/agents/`; reusable slash commands (`c-review`, `c-unreview`) live in
+`.claude/commands/`.

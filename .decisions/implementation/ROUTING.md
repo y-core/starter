@@ -1,7 +1,6 @@
 ---
-title: "Route Definitions"
-description: "routes.ts, route map, get/post path helpers, createController, controllers, healthCheck, contact action, home route, admin logs, adminLogsController, TODO auth, HTMX fragment routes, route guards middleware array, app.map, adding routes"
-weight: 26
+title: Route Definitions
+description: "The route map, the controller binding, the guard checklist a new route must satisfy, and how to add one."
 ---
 
 # Route Definitions
@@ -15,11 +14,28 @@ weight: 26
 ## 0. Quick Reference
 
 - §1 Current routes: route map (routes.ts) + controller binding (router.tsx)
+- §1a Route Map (src/routes.ts)
+- §1b Controller Binding (src/router.tsx)
+- §1c Route Shape
 - §2 healthCheck: /api/health, CSRF key validation
+- §2a /api/health
+- §2b What healthCheck Validates
 - §3 Contact: /api/contact, three guards, HTMX-only POST
+- §3a /api/contact — HTMX-Only POST Action
+- §3b Guard Order
+- §3c handleContact
 - §4 Home: GET /, csrfVerifyGuard mints token, definePage + renderPage
+- §4a GET / — Full Page with Contact Form
+- §4b Why csrfVerifyGuard on GET
+- §4c homeController Structure
 - §5 Admin logs: /admin/logs, adminLogsController (definePage + readLogViewer + LogViewerContent), TODO(auth)
+- §5a /admin/logs — Log Viewer
+- §5b TODO(auth) Comment
+- §5c LOGS_KV Absence
 - §6 Adding routes: checklist
+- §6a Checklist
+- §6b Route Registration Flow
+- §6c HTMX Fragment Routes
 
 ---
 

@@ -1,7 +1,6 @@
 ---
-title: "Code Review Standards"
-description: "code review, layer compliance, forge consumption, security checklist, HTMX guard, CSRF verification, contact route guards, test coverage, severity calibration, verification protocol, valid patterns, no re-implementing forge"
-weight: 42
+title: Code Review Standards
+description: "This app's layer-compliance and forge-consumption checklists, its security review points, and the patterns a reviewer must not flag."
 ---
 
 # Code Review Standards
@@ -18,9 +17,22 @@ weight: 42
 
 - §1 Review workflow: pre-review, during, output format
 - §2 Layer compliance: controllers/services/views/routes rules
+- §2a Handler Layer Rules
+- §2b Service Layer Rules
+- §2c View Layer Rules
+- §2d Routes Layer Rules
 - §3 Forge consumption: do not re-implement what forge provides
+- §3a Do Not Re-implement Forge Utilities
+- §3b Correct Import Paths
 - §4 Security: guards, CSRF, origin, no secrets in source
+- §4a No Hardcoded Secrets
+- §4b Contact Route Guards and Ordering
+- §4c CSP and Nonce Discipline
+- §4d Input Validation at Boundaries
 - §5 Testing: app.request, security pass+fail, entity encoding
+- §5a Coverage Requirements
+- §5b Assertion Correctness
+- §5c Security Pass + Fail Pattern
 - §6 Severity calibration
 - §7 Verification protocol
 - §8 Valid patterns
@@ -29,38 +41,9 @@ weight: 42
 
 ## 1. Review Workflow
 
-### 1a. Pre-Review Steps
-
-Before examining diffs, establish a passing baseline:
-
-1. Run `bun run check` — if it fails before your changes, note that separately
-2. Read `src/routes.ts` to identify new routes, then `src/router.tsx` for their middleware arrays
-3. Read changed handler files to understand the intended data flow
-4. Identify which forge modules are imported vs. re-implemented
-
-A pre-review that skips these steps risks false positives (e.g., claiming a guard is
-missing when it is present in the route middleware array).
-
-### 1b. During Review
-
-Work through §2 (layer compliance), §3 (forge consumption), §4 (security), and
-§5 (testing) in order. Apply §7 (verification protocol) before recording any finding.
-Classify every finding by §6 (severity).
-
-Only report findings that survive §7. Do not speculate about intent — read the
-surrounding code first.
-
-### 1c. Output Format
-
-Each finding uses this structure:
-
-    [FILE:LINE] ISSUE_TITLE
-    Severity: Critical | Major | Minor | Informational
-    Description of the problem and why it matters.
-    Suggested fix (brief).
-
-Group findings by file. List Critical and Major findings first within each file.
-End with a summary table: file, finding count, highest severity.
+See [`CODE_REVIEW.md`](../governance/CODE_REVIEW.md) §1 for the review workflow, the green-baseline
+requirement, and the finding format. The highest-yield step for this app is reading the route map
+and the controller binding before judging any guard.
 
 ---
 
@@ -248,67 +231,15 @@ Every guarded POST route needs both a passing and a failing security test:
 
 ## 6. Severity Calibration
 
-### 6a. Critical
-
-Applied to findings that directly compromise security or correctness in production:
-
-- Missing `csrfVerifyGuard` on any POST route
-- Hardcoded secret (API key, signing secret, password) in source
-- Inline `<script>` missing `nonce={ctx.nonce}` (CSP bypass)
-- Service function accepting raw `FormData` (validation bypass vector)
-- Module-level mutable state written per-request (data leakage between requests)
-
-### 6b. Major
-
-Applied to findings that violate architecture boundaries or weaken security:
-
-- Handler calling an external API directly (should delegate to service)
-- View containing business logic or service calls
-- New route defined outside `routes.ts` / `router.tsx`
-- Re-implementing a utility that forge already exports
-- Missing fail-case security test for a guarded route
-- Wrong guard order on a POST route middleware array
-- `c.env.SECRET` accessed directly instead of via `configStore`
-
-### 6c. Minor
-
-Applied to correctness issues that do not affect security or architecture:
-
-- Exported function missing TSDoc comment
-- `toContain` assertion used where `toBe` is possible (weaker test)
-- Unused import left in file
-- Variable name that conflicts with forge-exported names
-
-### 6d. Informational
-
-Suggestions that do not represent errors:
-
-- Alternative HTMX attribute patterns worth considering
-- Future auth integration suggestions for `// TODO(auth)` routes
-- Additional test cases for edge inputs
-- Performance notes about KV access patterns
+See [`CODE_REVIEW.md`](../governance/CODE_REVIEW.md) §4 for severity calibration and the deliberate
+asymmetry that makes excess prose Major and its absence Minor.
 
 ---
 
 ## 7. Verification Protocol
 
-### 7a. Before Recording a Finding
-
-1. Read the **full function**, not just the flagged line — surrounding guards or
-   validation may already address the concern
-2. Check `router.tsx` action binding in `createController` before claiming a guard is missing —
-   the guard may be in the middleware array rather than inside the handler
-3. Run `bun run check` to distinguish type errors from style issues
-4. Search for the forge export with `rg "@y-core/forge"` before claiming something
-   is re-implemented — it may be used elsewhere in the file
-
-### 7b. Confirming Layer Violations
-
-To confirm a handler-calls-service boundary violation:
-
-1. Identify the import in the handler file
-2. Check whether the imported module is in `src/services/` or an external SDK
-3. Verify the call is not wrapped in a service facade
+See [`CODE_REVIEW.md`](../governance/CODE_REVIEW.md) §5 for the verification protocol every finding
+must survive before it is reported.
 
 ---
 
