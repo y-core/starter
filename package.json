@@ -4,24 +4,21 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:assets": "bun run node_modules/@y-core/forge/src/assets/cli/bin.ts build all --minify --root . --config src/assets/config.ts --out .forge/assets.ts",
-    "cf:typecheck": "wrangler types ./.types/cloudflare.d.ts --no-include-env && wrangler types ./.types/worker-configuration.d.ts --no-include-runtime",
-    "check": "bun run cf:typecheck && bun run gen:asset-types && tsgo --noEmit && bun run lint && bun test tests/",
-    "gen:asset-types": "bun run node_modules/@y-core/forge/src/assets/cli/bin.ts types --root . --config src/assets/config.ts --out .forge/assets.ts",
+    "build:assets": "forge-assets build all --minify --root . --config src/assets/config.ts --out .forge/assets.ts",
     "dev": "bun run build:assets && wrangler dev src/worker.dev.ts --live-reload",
-    "lint": "biome check src/ tests/",
-    "lint:fix": "biome check --write src/ tests/",
-    "@y-core/forge": "https://codeload.github.com/y-core/forge/tar.gz/refs/tags/v0.0.85",
-    "@y-core/forge1": "file:../forge",
-    "test": "bun test tests/"
+    "fix": "forge-verify --fix",
+    "lint": "forge-verify --only lint",
+    "test": "bun test tests/",
+    "types:assets": "forge-verify --only types:assets",
+    "verify": "forge-verify"
   },
   "dependencies": {
-    "@y-core/forge": "github:y-core/forge#v0.0.83"
+    "@y-core/forge": "https://codeload.github.com/y-core/forge/tar.gz/refs/tags/v0.0.86"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.4",
     "@tailwindcss/cli": "^4.3.1",
-    "@typescript/native-preview": "7.0.0-dev.20260628.1",
+    "@typescript/native-preview": "^7.0.0-dev.20260707.2",
     "esbuild": "^0.28.1",
     "sharp": "^0.35.2",
     "tailwindcss": "^4.3.1",

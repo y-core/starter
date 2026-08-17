@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { assets } from "@assets";
 import app from "../src/worker";
 
 const MOCK_ASSETS = { fetch: async () => new Response("", { status: 200 }) } as unknown as Fetcher;
@@ -73,7 +74,9 @@ describe("Layout — sticky neutralisation on the navbar <details>", () => {
     const match = text.match(/<details data-slot="navbar" class="([^"]*)"/);
     expect(match).not.toBeNull();
     const classAttr = match?.[1] ?? "";
-    expect(classAttr).toBe("group backdrop-blur left-0 inset-y-0 md:inset-x-0 md:top-0 md:bottom-auto md:right-auto static z-auto bg-transparent");
+    expect(classAttr).toBe(
+      "group backdrop-blur left-0 inset-y-0 md:inset-x-0 md:top-0 md:bottom-auto md:right-auto max-md:bg-transparent max-md:backdrop-blur-none static z-auto bg-transparent",
+    );
 
     // Overrides applied by cn():
     expect(classAttr).toContain("static");
@@ -92,7 +95,7 @@ describe("Layout — sticky neutralisation on the navbar <details>", () => {
 
 /** Forge's `menu-link-item` class string, lifted from rendered output. */
 const MENU_ITEM_CLASS =
-  "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-popover-foreground bg-transparent border-0 cursor-pointer outline-none hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50";
+  "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm text-popover-foreground bg-transparent border-0 cursor-pointer outline-none hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50";
 
 /** Forge's `navbar-link` class string, lifted from rendered output. */
 const BAR_LINK_CLASS =
@@ -119,15 +122,15 @@ describe("Layout — nav content (Showcase menu + Contact bar link)", () => {
 
   it("renders Contact as a sibling bar link, not a menu item", async () => {
     const text = await getHomeHtml();
-    expect(text).toContain(`<a href="#contact" data-slot="navbar-link" class="${BAR_LINK_CLASS}">Contact</a>`);
+    expect(text).toContain(`<a href="/#contact" data-slot="navbar-link" class="${BAR_LINK_CLASS}">Contact</a>`);
     // Promoted out of the dropdown — it must not also render as a menu row.
-    expect(text).not.toContain(menuItem("#contact", "Contact"));
+    expect(text).not.toContain(menuItem("/#contact", "Contact"));
   });
 
   it("orders the bar as Showcase menu, then Contact, then the theme toggle", async () => {
     const text = await getHomeHtml();
     const showcase = text.indexOf("<span>Showcase</span>");
-    const contact = text.indexOf('<a href="#contact" data-slot="navbar-link"');
+    const contact = text.indexOf('<a href="/#contact" data-slot="navbar-link"');
     const theme = text.indexOf('data-scope="theme"');
     expect(showcase).toBeGreaterThan(-1);
     expect(contact).toBeGreaterThan(showcase);
@@ -166,9 +169,15 @@ describe("Layout — skip link", () => {
 });
 
 describe("Layout — hamburger/close sprite pair", () => {
-  it("renders both the hamburger and close icon refs in the toggle summary", async () => {
+  // Read off the manifest rather than spelled out: the sprite path carries a content hash. The pair
+  // itself is the contract — the header is a top bar, so it keeps the hamburger even though
+  // `collapsedAs='drawer'` slides its panel in off-canvas; the panel glyphs are the rails'.
+  it("renders both the hamburger and close icon refs in the toggle summary, and neither panel glyph", async () => {
+    const sprite = assets.path("svg/sprite.svg");
     const text = await getHomeHtml();
-    expect(text).toContain('<use href="/assets/svg/sprite.svg#icon-hamburger"></use>');
-    expect(text).toContain('<use href="/assets/svg/sprite.svg#icon-close"></use>');
+    expect(text).toContain(`<use href="${sprite}#icon-hamburger"></use>`);
+    expect(text).toContain(`<use href="${sprite}#icon-close"></use>`);
+    expect(text).not.toContain("#icon-panel-open");
+    expect(text).not.toContain("#icon-panel-close");
   });
 });

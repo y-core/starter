@@ -62,7 +62,7 @@ beforeEach(() => {
 describe("sendContactEmail — HTML body", () => {
   it("includes Name, Email, and Message labels in the body", async () => {
     await sendContactEmail(VALID_SUBMISSION, BASE_EMAIL, nullLogger);
-    const body: string = capturedBody!.content[0].value;
+    const body: string = capturedBody!.content[0]!.value;
     expect(body).toContain("<strong>Name:</strong>");
     expect(body).toContain("<strong>Email:</strong>");
     expect(body).toContain("<strong>Message:</strong>");
@@ -70,35 +70,35 @@ describe("sendContactEmail — HTML body", () => {
 
   it("includes the phone field when phone is provided", async () => {
     await sendContactEmail(VALID_SUBMISSION, BASE_EMAIL, nullLogger);
-    const body: string = capturedBody!.content[0].value;
+    const body: string = capturedBody!.content[0]!.value;
     expect(body).toContain("<strong>Phone:</strong>");
     expect(body).toContain("+1 555 012 3456");
   });
 
   it("omits the phone paragraph when phone is empty", async () => {
     await sendContactEmail({ ...VALID_SUBMISSION, phone: "" }, BASE_EMAIL, nullLogger);
-    const body: string = capturedBody!.content[0].value;
+    const body: string = capturedBody!.content[0]!.value;
     expect(body).not.toContain("Phone:");
   });
 
   it("escapes HTML entities in user-provided name", async () => {
     const xssName = "<script>alert(1)</script>";
     await sendContactEmail({ ...VALID_SUBMISSION, name: xssName }, BASE_EMAIL, nullLogger);
-    const body: string = capturedBody!.content[0].value;
+    const body: string = capturedBody!.content[0]!.value;
     expect(body).not.toContain("<script>");
     expect(body).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
   });
 
   it("escapes HTML entities in user-provided phone", async () => {
     await sendContactEmail({ ...VALID_SUBMISSION, phone: "<img onerror=alert(1)>" }, BASE_EMAIL, nullLogger);
-    const body: string = capturedBody!.content[0].value;
+    const body: string = capturedBody!.content[0]!.value;
     expect(body).not.toContain("<img");
     expect(body).toContain("&lt;img onerror=alert(1)&gt;");
   });
 
   it("converts newlines to <br> in the message", async () => {
     await sendContactEmail({ ...VALID_SUBMISSION, message: "line one\nline two" }, BASE_EMAIL, nullLogger);
-    const body: string = capturedBody!.content[0].value;
+    const body: string = capturedBody!.content[0]!.value;
     expect(body).toContain("<br>");
     expect(body).not.toContain("\nline two");
   });
@@ -144,12 +144,12 @@ describe("sendContactEmail — API payload", () => {
 
   it("sets personalizations[0].to[0].email to the configured email.to", async () => {
     await sendContactEmail(VALID_SUBMISSION, BASE_EMAIL, nullLogger);
-    expect(capturedBody!.personalizations[0].to[0].email).toBe("to@example.com");
+    expect(capturedBody!.personalizations[0]!.to[0]!.email).toBe("to@example.com");
   });
 
   it("sets content[0].type to text/html", async () => {
     await sendContactEmail(VALID_SUBMISSION, BASE_EMAIL, nullLogger);
-    expect(capturedBody!.content[0].type).toBe("text/html");
+    expect(capturedBody!.content[0]!.type).toBe("text/html");
   });
 });
 

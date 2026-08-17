@@ -9,7 +9,10 @@ export default defineAssetsConfig({
       target: "svg/sprite.svg",
       sources: [
         { path: "src/assets/svg/", files: ["logo.svg"] },
-        { path: "node_modules/@y-core/forge/src/ui/assets/core", files: ["chevron-down.svg", "close.svg", "hamburger.svg", "spinner.svg"] },
+        {
+          path: "node_modules/@y-core/forge/src/ui/assets/core",
+          files: ["chevron-down.svg", "close.svg", "hamburger.svg", "spinner.svg", "panel-open.svg", "panel-close.svg"],
+        },
         { path: "node_modules/@y-core/forge/src/ui/assets/theme/", files: ["sun.svg", "moon.svg", "monitor.svg"] },
         { path: "https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/", files: ["phone.svg", "mail.svg", "send.svg"] },
       ],

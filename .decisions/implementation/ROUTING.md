@@ -264,7 +264,7 @@ When adding any new route, complete all items before marking done:
 - [ ] Fragment handlers: use `fragmentResponse(renderSuccess(...))` / `renderValidationErrors`
 - [ ] New view component defined in `src/views/` (page views own `<Layout>`; not inline in the controller)
 - [ ] New route covered by a test in `tests/` (status + security headers)
-- [ ] Run `bun run check` — types, lint, and tests must all pass
+- [ ] Run `bun run verify` — generated types, typecheck, lint, and tests must all pass
 
 ### 6b. Route Registration Flow
 

@@ -4,7 +4,8 @@
    classes reachable at all, since Tailwind v4 never scans `node_modules`. `theme-slate.css` is
    optional and comes after, re-declaring the twelve gray steps and nothing else. */
 @import "@y-core/forge/ui/assets/css/forge.css";
-@import "@y-core/forge/ui/assets/css/theme-gray.css";
+@import "./css/custom.css";
+/*@import "@y-core/forge/ui/assets/css/theme-gray.css";*/
 
 @source "../views/**/*.tsx";
 @source "../model/**/*.ts";

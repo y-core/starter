@@ -52,6 +52,16 @@ describe("drift guard — routes match showcasePaths(base, apiPath)", () => {
   it("toast api path matches", () => {
     expect(routes.showcase.ui.api.toast.href()).toBe(derived.toast);
   });
+
+  it("every catalog page hangs off the same base", () => {
+    expect([
+      routes.showcase.ui.interactive.href(),
+      routes.showcase.ui.runtime.href(),
+      routes.showcase.ui.htmx.href(),
+      routes.showcase.ui.chrome.href(),
+      routes.showcase.ui.theme.href(),
+    ]).toEqual([`${base}/interactive`, `${base}/runtime`, `${base}/htmx`, `${base}/chrome`, `${base}/theme`]);
+  });
 });
 
 // ─── GET /showcase/ui ─────────────────────────────────────────────────────────
@@ -77,22 +87,22 @@ describe("GET /showcase/ui", () => {
   it("renders section headings", async () => {
     const res = await app.request("/showcase/ui", {}, MINIMUM_ENV);
     const text = await res.text();
-    for (const heading of ["Alert", "Button", "Card", "Field", "Input", "Toast"]) {
+    for (const heading of ["Button", "Card", "Field", "Input", "Select"]) {
       expect(text).toContain(heading);
     }
   });
 
-  it("renders TOC anchor links", async () => {
+  it("renders TOC anchor links for its own sections, and a route link per page", async () => {
     const res = await app.request("/showcase/ui", {}, MINIMUM_ENV);
     const text = await res.text();
-    expect(text).toContain('href="#alert"');
     expect(text).toContain('href="#button"');
-    expect(text).toContain('href="#htmx-demos"');
-    expect(text).toContain('href="#resumable"');
+    expect(text).toContain('href="#input"');
+    expect(text).toContain('href="/showcase/ui/htmx"');
+    expect(text).toContain('href="/showcase/ui/runtime"');
   });
 
-  it("renders HTMX demo sections", async () => {
-    const res = await app.request("/showcase/ui", {}, MINIMUM_ENV);
+  it("serves the HTMX demos from the page whose prerequisite names them", async () => {
+    const res = await app.request("/showcase/ui/htmx", {}, MINIMUM_ENV);
     const text = await res.text();
     expect(text).toContain("Live Preview");
     expect(text).toContain("Inline Validation");
@@ -102,8 +112,8 @@ describe("GET /showcase/ui", () => {
     expect(text).toContain("Flash Toast");
   });
 
-  it("renders the resumable island with data-scope", async () => {
-    const res = await app.request("/showcase/ui", {}, MINIMUM_ENV);
+  it("serves the resumable island from the runtime page", async () => {
+    const res = await app.request("/showcase/ui/runtime", {}, MINIMUM_ENV);
     const text = await res.text();
     expect(text).toContain('data-scope="show-filter"');
     expect(text).toContain("data-state=");
@@ -111,6 +121,22 @@ describe("GET /showcase/ui", () => {
     expect(text).toContain('data-ref="count"');
     expect(text).toContain("data-filter-item");
     expect(text).toContain("Spinner");
+  });
+
+  it("answers every catalog page with a full page carrying its own heading", async () => {
+    for (const [path, heading] of [
+      ["/showcase/ui", "UI Component Showcase — Catalog"],
+      ["/showcase/ui/interactive", "UI Component Showcase — Interactive"],
+      ["/showcase/ui/runtime", "UI Component Showcase — Runtime"],
+      ["/showcase/ui/htmx", "UI Component Showcase — HTMX"],
+      ["/showcase/ui/chrome", "UI Component Showcase — Chrome"],
+    ] as const) {
+      const res = await app.request(path, {}, MINIMUM_ENV);
+      expect(res.status).toBe(200);
+      const text = await res.text();
+      expect(text).toContain("<!DOCTYPE html>");
+      expect(text).toContain(heading);
+    }
   });
 
   it("includes required security headers", async () => {

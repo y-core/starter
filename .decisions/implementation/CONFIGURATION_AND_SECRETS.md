@@ -184,8 +184,10 @@ This mirrors the nested structure of `AppConfigSchema` (§1a).
 ## 4. Workers Bindings
 
 Workers bindings are declared in `wrangler.jsonc` and surfaced in handlers as
-`c.env.*`. The generated `.types/cloudflare.d.ts` produces the `Env` type, which
-is aliased as `Bindings` in `src/app/context.ts`.
+`c.env.*`. The generated `.types/worker-configuration.d.ts` produces the `Env`
+type, which is aliased as `Bindings` in `src/app/context.ts`. (`cloudflare.d.ts`
+is generated `--no-include-env` and declares only an empty `Env` for the runtime
+types to merge into.)
 
 ### 4a. ASSETS Binding — Static Files
 

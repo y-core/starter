@@ -109,7 +109,8 @@ cross-origin caller.
 
 ### 2a. AppEnv — Bindings Type
 
-`AppEnv` is an alias for the generated `Env` type from `.types/cloudflare.d.ts`. Key bindings:
+`AppEnv` is an alias for the generated `Env` type from `.types/worker-configuration.d.ts`. Key
+bindings:
 
     type AppEnv = Env
     // ASSETS:               Fetcher       — static asset passthrough to public/

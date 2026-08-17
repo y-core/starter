@@ -66,11 +66,20 @@ Scope is a property of the URL, so no tool takes a `project` argument.
 **Key commands:**
 
 ```bash
-bun run check         # types → lint → tests (full pipeline)
+bun run verify        # the gate: wrangler runtime types → wrangler binding types → asset types
+                      #   → typecheck → lint → test
+bun run verify --list # the step labels, in order, without running any of them
 bun run dev           # build assets + watch CSS + wrangler dev (dev entry, live-reload)
-bun run lint:fix      # auto-fix lint/format issues
+bun run fix           # auto-fix lint/format issues
 bun run test          # tests
 ```
+
+The gate's six steps are declared in `config/steps.ts`, which default-exports the table that the
+`forge-verify` bin loads. There is no binding script between the two, and no `&&` chain anywhere:
+generation leads judgement, so a stale generated type surfaces as a type error rather than as a
+silent pass. The table is near-pure `cloudflareWorkerSteps()` from `@y-core/forge/pkg` — this app is
+the fleet's proof that the preset is sufficient for a Worker app, so a row that the preset does not
+emit is a bug report against the preset rather than a local convenience.
 
 **Avoid:** `tsc` (use `tsgo`), `npm`/`pnpm`/`yarn` (use `bun`), `eslint`/`prettier` (use `biome`).
 
@@ -172,7 +181,19 @@ that owns the fix, and `cc-tester` never edits the code it judges.
 - Do NOT install or use `bun-types` — it overrides DOM's `fetch` type with Bun-specific properties
 - `@types/bun` is NOT a dependency; the custom stub covers all test needs
 
-**Note:** `tsconfig.json` has a `paths` alias (`@y-core/forge/*`) pointing to the host filesystem path. This is a Zed editor workaround (host path differs from Docker container path). In practice it governs `bun run check` resolution — which verifies cross-repo changes end-to-end before git releases.
+**Note:** `tsconfig.json` declares exactly one `paths` alias — `@assets` → `./.forge/assets.ts`, the generated asset manifest. `@y-core/forge/*` is **not** aliased: it resolves through `node_modules` like any dependency, so `bun run verify` typechecks against whatever the manifest installs. A `file:` dependency is therefore the way to verify a cross-repo change end-to-end before cutting a forge release — and the package name in `dependencies` must stay `@y-core/forge`, since that is what every import in this repo writes.
+
+**Note:** the `file:` link costs one line, in `config/steps.ts`. bun *links* a `file:` dependency and
+realpaths an imported module — though not the entry point — so forge's `app-root.ts` sees its own
+checkout with no `node_modules` above it, and `resolveAppRoot`'s derived branch refuses. `steps.ts`
+therefore sets `FORGE_APP_ROOT` from its own path (cwd-independent) before exporting the table; the
+gate's `types:assets` row inherits it. This stays app-side deliberately — the link is this app's
+workflow choice, and forge should carry no resolution branch for an install shape production never
+uses. The two consequences: `types:assets` is `forge-verify --only types:assets`, so the escape hatch
+and the gate row are literally one thing rather than two spellings of it; and `build:assets`, the one
+asset command outside the gate, passes `--root .` explicitly.
+
+**Note:** `config/` is deliberately outside `include`. `config/steps.ts` imports `@y-core/forge/pkg`, which pulls forge's build-time tree into the type program; that tree typechecks only with node's `process` and `Buffer` in global scope — exactly what `"types": []` withholds from the Worker. It is still linted, via `sources` in the step table.
 
 ---
 
