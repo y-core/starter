@@ -1,55 +1,92 @@
 # CLAUDE.md — Architectural Constitution
 
-> fetch-router (TypeScript Worker) + Tailwind CSS v4 + HTMX on Cloudflare Workers.
-> forge's `Forge` router owns all routes. Static assets (`public/`) served via Wrangler.
+> A Cloudflare Workers application on `@y-core/forge` — the fleet's **starter**, and its proof that
+> the shared library is sufficient for a Worker app on its own. fetch-router over Tailwind v4 and
+> HTMX, rendered SSR; static assets in `public/` are served by Wrangler.
 
 ---
 
 ## Behavioral Rules (always enforced)
 
 - ONLY do what has been asked — recommend and get approval before any additions
-- NEVER create documentation files (`*.md`) unless explicitly requested
-- NEVER hardcode API keys, secrets, or credentials in source files
-- NEVER commit secrets, credentials, or `.env` files
-- ALWAYS validate user input at system boundaries; sanitize file paths (prevent `../` traversal)
-- ALWAYS ensure implementations leverage `@y-core/forge/security` (`makeSecurityHeaders`)
-- ALWAYS run local verification after changes — **delegate every gate run to `cc-tester`** (see _Verification Delegation_)
-- ALWAYS report a command's exit status with the one canonical suffix — never a variant (see _Shell Exit Checks_)
-- ALWAYS account for HTML-encoded entities in test assertions for HTML output
-- ALWAYS enforce exact-match test assertions — never substring matching
-- Use native `rg` (ripgrep) for content search and `find` for file search
-- NEVER provide deprecation shims or backward-compatible patterns before v1.0.0
-- NEVER write a comment outside the budget in `governance/PRODUCTION_TS_RULES.md` §5 — one line of TSDoc per export, the `@public`/`@internal` tags, and the rare inline *why*. Nothing else
+- NEVER add runtime dependencies without approval
+- NEVER hardcode API keys, secrets, or credentials in source files; never commit `.dev.vars` or `.env`
+- NEVER provide deprecation shims or backward-compatible paths before v1.0.0 — if the best design
+  breaks existing behaviour, update every call site
+- NEVER reach into `node_modules` or import a wrapped dependency directly — every forge capability
+  comes from its published subpath (`governance/FORGE_CONSUMPTION.md` §2)
+- NEVER write a comment outside the budget in `governance/PRODUCTION_TS_RULES.md` §5 — one line
+  of TSDoc per export, the `@public`/`@internal` tags, and the rare inline *why*. Nothing else.
+  No `@example` blocks, no multi-paragraph rationale, no restating the code, no section banners,
+  no TODOs. Code is the documentation; prose is a cost paid on every read. Fix an unclear line
+  with a better name, not a comment
+- ALWAYS delete unbudgeted comments from any file you touch — there is no grandfathering, and
+  rationale worth keeping is routed to its single home (`governance/PRODUCTION_TS_RULES.md` §5c)
+- ALWAYS give an exported symbol a domain word, so it can be found from a question and not only
+  from a reference — `create` plus a generic noun is a prefix, not a name. One domain word is the
+  floor and roughly the ceiling; do not lengthen a name past it
+  (`governance/PRODUCTION_TS_RULES.md` §7)
+- ALWAYS check forge before writing a cross-cutting capability
+  (`governance/FORGE_CONSUMPTION.md` §1a)
+- ALWAYS validate untrusted input at the boundary; services receive typed domain objects, and any
+  path segment is sanitized against `../` traversal
 - ALWAYS declare a route's guards in its middleware list, never inline in the handler
-- **Governance is overwrite-on-sync.** Never edit `.decisions/governance/**`; it is byte-identical across every forge application, and an in-place edit is silently reverted by the next sync. A local ruling goes in `.decisions/implementation/**` (`governance/AGENT_GUIDE.md` §6d)
+- ALWAYS enforce exact-match test assertions accounting for HTML entities — never substring
+  matching on markup. Tests live in `tests/`, **not** co-located with source
+- ALWAYS run local verification after changes — **delegate every gate run to `cc-tester`** (see
+  _Verification Delegation_)
+- ALWAYS report a command's exit status with the one canonical suffix — never a variant (see
+  _Shell Exit Checks_)
+- ALWAYS reach the ledger over MCP, and never work from a remembered copy of its rules — the tool
+  descriptions and the refusals carry them, and a refusal is acted on rather than guessed past
+- **Governance is overwrite-on-sync.** Never edit `.decisions/governance/**` in this repository;
+  it is byte-identical across every application that clones the shared corpus, and an in-place
+  edit is silently reverted by the next sync. A local ruling goes in
+  `.decisions/implementation/**` (`governance/AGENT_GUIDE.md` §6d)
+- Use `rg` for content search and `find` for file search
 
 ---
 
 ## Code Intelligence
 
-When tracing where a symbol is defined or finding all references to
-it, use LSP (goToDefinition, findReferences, hover) instead of Grep.
-LSP gives exact results; Grep gives text matches.
+When tracing where a symbol is defined or finding all references to it, use LSP
+(goToDefinition, findReferences, hover) instead of Grep. LSP gives exact results; Grep gives
+text matches.
 
-Use Grep/Glob for discovery (finding files, searching patterns). Use
-LSP for understanding (definitions, references, type info).
+Use Grep/Glob for discovery (finding files, searching patterns). Use LSP for understanding
+(definitions, references, type info).
 
-After locating a file with Grep/Glob, use LSP to navigate within it
-rather than reading the whole file.
+After locating a file with Grep/Glob, use LSP to navigate within it rather than reading the
+whole file.
+
+LSP resolves a symbol exactly once you hold one; a name is what gets you the first one, which is
+why exported names carry a domain word (`governance/PRODUCTION_TS_RULES.md` §7).
+
+**`.decisions/` is a hidden directory, so a bare `rg` from the repository root does not search
+it.** A broad `rg 'pattern'` silently returns no governance hit — which reads as "no such rule"
+rather than "not searched". Search the governing documents by explicit path, or with `--hidden`:
+
+```bash
+rg 'pattern' .decisions/          # explicit path — preferred
+rg --hidden 'pattern'             # whole tree, including .decisions/ and .claude/
+```
+
+The Guide Index below hands you the path, so the explicit form is the normal one; reach for
+`--hidden` only when searching across governance and source at once.
 
 ---
 
 ## Ledger
 
-ledger tasks are tracked in the task-forge ledger via the `ledger` MCP tools.
-Scope is a property of the URL, so no tool takes a `project` argument.
+Tasks are tracked in the task-forge ledger via the `ledger` MCP tools. Scope is a property of the
+URL, so no tool takes a `project` argument.
 
-- Move a task to `doing` when you start it; call again only when its state
-  actually changes, never to narrate progress.
+- Move a task to `doing` when you start it; call again only when its state actually changes,
+  never to narrate progress.
 - A read carries the `revision` a later edit must cite — read before you write.
 - Record the resolution with, or before, the move to `done`.
-- On a refusal, act on the payload: `rule` names what was applied, `requires`
-  names the arguments to add, `retryable` says whether the call could succeed.
+- On a refusal, act on the payload: `rule` names what was applied, `requires` names the arguments
+  to add, `retryable` says whether the call could succeed.
 
 ---
 
@@ -57,31 +94,35 @@ Scope is a property of the URL, so no tool takes a `project` argument.
 
 | Tool | Role |
 |---|---|
-| `bun` | Package manager and script runner |
-| `tsgo` (`@typescript/native-preview`) | Type checker (10× faster than tsc) |
-| `biome` | Linter and formatter |
-| `wrangler` | Cloudflare Workers deploy and dev server |
-| `forge-assets` | Client bundle (esbuild) + Tailwind CSS + Lucide sprite pipeline |
-
-**Key commands:**
+| `bun` | Package manager and test runner |
+| `tsgo` (`@typescript/native-preview`) | Type checker (use instead of `tsc`) |
+| `biome` | Linter and formatter (use instead of `eslint`/`prettier`) |
+| `wrangler` | Cloudflare Workers dev server and deploy |
+| `forge-assets` | Client bundle (esbuild), Tailwind v4 and Lucide sprite pipeline |
 
 ```bash
-bun run verify        # the gate: wrangler runtime types → wrangler binding types → asset types
-                      #   → typecheck → lint → test
-bun run verify --list # the step labels, in order, without running any of them
-bun run dev           # build assets + watch CSS + wrangler dev (dev entry, live-reload)
-bun run fix           # auto-fix lint/format issues
-bun run test          # tests
+bun run verify                 # the gate — every step must pass
+bun run verify --only lint     # one step, for the dev loop (any step label)
+bun run verify --list          # print the steps, run none
+bun run dev                    # asset build + wrangler dev (dev entry, live-reload)
+bun run build:assets           # production asset build
+bun run fix                    # auto-fix lint and formatting, then re-run the gate
 ```
 
-The gate's six steps are declared in `config/steps.ts`, which default-exports the table that the
-`forge-verify` bin loads. There is no binding script between the two, and no `&&` chain anywhere:
-generation leads judgement, so a stale generated type surfaces as a type error rather than as a
-silent pass. The table is near-pure `cloudflareWorkerSteps()` from `@y-core/forge/pkg` — this app is
-the fleet's proof that the preset is sufficient for a Worker app, so a row that the preset does not
-emit is a bug report against the preset rather than a local convenience.
+**One command, two modes**, not two commands. `config/steps.ts` is the single source of truth for
+the gate's steps and which of them are full-only; it default-exports the table `forge-verify`
+loads, with no binding script between the two and no `&&` chain anywhere — generation leads
+judgement, so a stale generated type surfaces as a type error rather than as a silent pass. This
+repository declares no full-only step, so `--full` currently adds nothing; the flag is the gate's,
+not the table's. Gate philosophy, the modes, and the flags:
+[`TESTING.md`](.decisions/governance/TESTING.md) §6.
 
-**Avoid:** `tsc` (use `tsgo`), `npm`/`pnpm`/`yarn` (use `bun`), `eslint`/`prettier` (use `biome`).
+The table is near-pure `cloudflareWorkerSteps()` from `@y-core/forge/pkg` — this app is the fleet's
+proof that the preset is sufficient for a Worker app, so a row that the preset does not emit is a
+bug report against the preset rather than a local convenience.
+
+**Avoid:** `tsc` (use `tsgo`), `npm`/`pnpm`/`yarn` (use `bun`), `eslint`/`prettier` (use
+`biome`), runtime-specific type packages (use the hand-written stub).
 
 ### Shell Exit Checks
 
@@ -94,46 +135,60 @@ spelling, same casing, same quoting, every time:
 
 - Use `;`, never `&&` — with `&&` the echo is skipped precisely when the command fails, which is
   the only case worth checking.
-- Never pipe within the same statement; redirect to a file first, then inspect it.
+- Never pipe within the same statement: `bun run verify | tail -20; echo "EXIT:$?"` reports
+  `tail`'s status, not the gate's. Redirect first, then inspect the file:
+  `bun run verify > /tmp/verify.log 2>&1; echo "EXIT:$?"`.
 - Never invent a variant — `exit=$?`, `RC=$?`, or a re-quoted spelling all miss the allowlist and
   cost a fresh permission prompt each time.
+- Omit the suffix when the exit code is not actually in question; a bare failing command already
+  surfaces its status.
 
 **There is exactly one permitted spelling, and `.claude/settings.local.json` allows exactly that
-one.**
+one.** An allowlist carrying several variants is how the rule stops being a rule.
 
 ### Verification Delegation
 
-**`cc-tester` is the sole runner** of the verification gate and any cross-cutting suite. It returns
-a terse verdict — `✓ green`, or `✗` with the failing step and a minimal excerpt — **never the full
-stream**. `cc-plan`, `cc-dev`, and `cc-doc` delegate every gate run to it; `cc-test` may smoke-run
-only the single test file it just wrote.
+**`cc-tester` is the sole runner** of `bun run verify`, of any narrowed `--only` run, and of any
+cross-cutting suite. It returns a terse verdict — `✓ green`, or `✗` with the failing step and a
+minimal excerpt — **never the full stream**. `cc-plan`, `cc-dev`, and `cc-doc` delegate every gate
+run to it; `cc-test` may smoke-run only the single test file it just wrote.
 
 On failure the **owning** agent fixes and re-delegates — the gate never re-runs inside the agent
-that owns the fix, and `cc-tester` never edits the code it judges.
+that owns the fix, and `cc-tester` never edits the code it judges. A **markdown-only change runs no
+gate**; the doc edit is its own evidence.
+
+`cc-tester` declares a `tools:` allowlist without `Write`/`Edit`, but **enforcement is not
+guaranteed**. Treat the whole split as convention: every agent obeys its stated boundaries because
+it is told to, not because a mechanism stops it.
 
 ---
 
 ## Architecture
 
-**Entry:** `src/worker.ts` exports `createWorker(security: SecurityHeadersOptions)` — a factory that calls `createApp`, `registerMiddleware` (security headers, requestId, logging, CORS), `app.map(routes, controller)`, and `applyAssets`. Its default export is the production app (base CSP: `['self', NONCE, TURNSTILE_CSP]`).
+**TypeScript everywhere, one composition root.** `src/worker.ts` exports
+`createWorker(security: SecurityHeadersOptions)`, which calls `createApp`, `registerMiddleware`,
+`app.map(routes, controller)` and `applyAssets`; its default export is the production app.
+`src/worker.dev.ts` layers the Wrangler live-reload script hash onto that CSP, so the reload hash
+cannot leak into production by construction.
 
-**Dev entry:** `src/worker.dev.ts` — default-exports `createWorker(mergeSecurityHeaders(securityHeaders, { scriptSrc: [WRANGLER_LIVE_RELOAD_HASH] }))`. Layers the Wrangler live-reload inline-script hash onto the prod CSP for `wrangler dev --live-reload`. The reload hash is deliberately kept out of the production CSP so it cannot leak by construction.
+| Layer | Role | Location | Runtime |
+|---|---|---|---|
+| **server** | routes, controllers, middleware, SSR views, CSP | `src/` | Cloudflare Worker — never ships to the browser |
+| **domain** | typed page and site content shapes | `src/model/` | isomorphic |
+| **services** | external integrations (email, and anything else off-Worker) | `src/services/` | Cloudflare Worker |
+| **client** | HTMX wiring + mounted scopes | `src/client/` | browser |
 
-**Routes:** `src/routes.ts` — declarative route map using `get()`/`post()` path helpers; `src/router.tsx` — controller binding using `@y-core/forge/router`.
+**Pattern:** one composition root → global middleware → declarative route map → controllers →
+services → views, over a model of typed domain shapes.
 
-**Controllers:** `src/controllers/*.{ts,tsx}` — plain controller modules (`{ middleware, handler }` or a bare handler). GET handlers use `definePage({ loader, view })` from `@y-core/forge/app`; the `view` calls `renderPage()` from `@y-core/forge/render`. Mutation handlers return `fragmentResponse` with forge fragment helpers. `health` stays inline in `router.tsx`; `adminLogs` is its own controller module.
+**Layer discipline:** every unit belongs to exactly one layer, and the layer decides what it may
+import. Resolve placement by **concern first, then latency, then thread cost**; when two layers
+fit, pick the one further from the request path.
 
-**Views:** `src/views/*.tsx` — forge JSX components (`@jsxImportSource @y-core/forge/jsx`; NOT Hugo templates). Page views own their `<Layout>` composition (the `children` Slot); `renderPage()` from `@y-core/forge/render` converts JSX to an `HtmlResponse`.
+For the route inventory, the config schema, the bindings, the guard chain and the design system,
+consult `.decisions/implementation/` via the **Guide Index** — never duplicate that detail here.
 
-**Services:** `src/services/` — external integrations (email, etc.).
-
-**Client JS:** `src/client/main.ts` — esbuild-bundled for browser, output to `public/assets/js/`.
-
-**Content model:** `src/model/` — TypeScript types for page data.
-
-**Styles:** `src/assets/tailwind.css` — Tailwind v4 entry point with `@theme {}` tokens.
-
-**Shared lib:** `@y-core/forge` (GitHub: `github.com/y-core/forge`) — reusable utilities for fetch-router + Workers.
+---
 
 ## Guide Index
 
@@ -141,23 +196,24 @@ that owns the fix, and `cc-tester` never edits the code it judges.
 > `## 0. Quick Reference` listing every section, so you can pick a section without reading the
 > whole file.
 >
-> **Two tables, two directories.** `governance/` holds the portable rules shared with every forge
-> application and is overwritten on sync; `implementation/` holds this app's own decisions and is
-> never touched by a sync ([`AGENT_GUIDE.md`](.decisions/governance/AGENT_GUIDE.md) §6d).
+> **Two tables, two directories.** `governance/` holds the portable rules and is overwritten on
+> sync; `implementation/` holds this repository's own decisions and is never touched by a sync
+> ([`AGENT_GUIDE.md`](.decisions/governance/AGENT_GUIDE.md) §6d). Both tables must agree with
+> their directory in both directions (§5c).
 
 ### Governance — portable, overwrite-on-sync
 
 - [`AGENT_GUIDE.md`](.decisions/governance/AGENT_GUIDE.md): how `.decisions/` docs are structured, numbered, sized, and cross-referenced; the governance/implementation boundary; the single-home rule
 - [`APP_ARCHITECTURE.md`](.decisions/governance/APP_ARCHITECTURE.md): the composition root, the layer stack and its dependency rules, DI through config, concern-first placement, the feature sequence
-- [`FORGE_CONSUMPTION.md`](.decisions/governance/FORGE_CONSUMPTION.md): leverage forge first, never bypass its facade, local workaround versus upstream change, upgrading
+- [`FORGE_CONSUMPTION.md`](.decisions/governance/FORGE_CONSUMPTION.md): leverage the shared library first, never bypass its facade, local workaround versus upstream change, upgrading
 - [`WORKERS_PLATFORM.md`](.decisions/governance/WORKERS_PLATFORM.md): the isolate model, post-response work, rate limiting, deploy safety and secrets, static assets
-- [`PRODUCTION_TS_RULES.md`](.decisions/governance/PRODUCTION_TS_RULES.md): six coding rules — zero global state, explicit errors, validation first, testability, **the comment budget (§5)**, declarative style
+- [`PRODUCTION_TS_RULES.md`](.decisions/governance/PRODUCTION_TS_RULES.md): seven coding rules — zero global state, explicit errors, validation first, testability, **the comment budget (§5)**, declarative style, name distinctiveness (§7)
 - [`BOUNDARIES.md`](.decisions/governance/BOUNDARIES.md): SSR versus browser, middleware ordering and guard placement, validate-at-boundary, no-PII logging, fail-closed
 - [`ERROR_HANDLING.md`](.decisions/governance/ERROR_HANDLING.md): the one `Result` primitive, failures crossing a layer, fragment versus page, the error taxonomy
 - [`TESTING.md`](.decisions/governance/TESTING.md): the app-request pattern, the environment fixture, exact-match assertions, fail-closed expectations, the gate
 - [`CODE_REVIEW.md`](.decisions/governance/CODE_REVIEW.md): blocking invariants, tiered detection with a command per rule, severity calibration, known false positives
 
-### Implementation — this app only
+### Implementation — this repository only
 
 - [`ARCHITECTURE_GUIDE.md`](.decisions/implementation/ARCHITECTURE_GUIDE.md): the `createWorker` composition root, this app's layer directories, the dev/prod CSP split, typed config access
 - [`MIDDLEWARE_AND_CONTEXT.md`](.decisions/implementation/MIDDLEWARE_AND_CONTEXT.md): the registered middleware chain, the guard sentinels each route composes, the typed context accessors
@@ -172,28 +228,66 @@ that owns the fix, and `cc-tester` never edits the code it judges.
 - [`UI_GUIDE.md`](.decisions/implementation/UI_GUIDE.md): the view layer and layout composition, HTMX patterns, Tailwind theme tokens, the theme toggle
 - [`CODE_REVIEW.md`](.decisions/implementation/CODE_REVIEW.md): this app's layer-compliance and forge-consumption checklists, its security review points, the do-not-flag table
 
+**This index lists only documents that exist**, and a new document adds its own line here in the
+same change that lands it.
+
+---
+
+## Growth Rules
+
+Add new code in the layer its concern belongs to; reuse an existing export before adding one, and
+never duplicate a capability forge already provides.
+
+| Adding… | Goes to | Recipe |
+|---|---|---|
+| Route | `src/routes.ts` + a controller in `src/controllers/` + the binding in `src/router.tsx` | `implementation/ROUTING.md` §6a |
+| HTMX fragment route | the same three files, returning `fragmentResponse` — never `renderPage` | `implementation/ROUTING.md` §6c |
+| Route guard, or a change to guard order | `src/app/middleware.ts`, declared in the route's middleware list and never inline in the handler | `implementation/MIDDLEWARE_AND_CONTEXT.md` §3d |
+| Global middleware | `registerMiddleware` in `src/app/middleware.ts`, ordered explicitly | `implementation/MIDDLEWARE_AND_CONTEXT.md` §1a |
+| Context variable a handler reads | the typed accessors in `src/app/context.ts` — never an untyped `c.get` at a call site | `implementation/MIDDLEWARE_AND_CONTEXT.md` §2b |
+| Per-request presentation value (nonce, CSRF token, base URL) | `renderContext` in `src/app/context.ts` | `implementation/MIDDLEWARE_AND_CONTEXT.md` §4a |
+| Config value, env var, or binding | `AppConfigSchema` in `src/app/config.ts` — validated at startup, never read from `env` at a call site | `implementation/CONFIGURATION_AND_SECRETS.md` §1a |
+| Workers binding declaration | `wrangler.jsonc` **and** the `AppEnv` type, amended together | `implementation/CONFIGURATION_AND_SECRETS.md` §4 |
+| A secret | `.dev.vars` locally and `wrangler secret` in production — never a source file, never a commit | `implementation/CONFIGURATION_AND_SECRETS.md` §6d |
+| Validation rule for submitted input | the valibot schema beside its handler, parsed with `v.safeParse` before any service call | `implementation/INPUT_VALIDATION.md` §1b |
+| Bot or abuse check | ordered against the existing honeypot / CSRF / Turnstile sequence, never appended blindly | `implementation/INPUT_VALIDATION.md` §3c |
+| A failure path a handler can return | a dedicated fragment renderer call **and** a test case for that status | `implementation/ERROR_HANDLING.md` §6 |
+| Log field or channel | the channel set in `src/app/middleware.ts` — method, path, status, duration, requestId, and no PII | `implementation/STRUCTURED_LOGGING.md` §5 |
+| KV access | a typed store from `createKVStore` with an explicit codec — never a raw binding call at a handler | `implementation/DATA_STORAGE.md` §2a |
+| A D1 or R2 binding | the documented pattern plus startup validation in the same change | `implementation/DATA_STORAGE.md` §3, §4 |
+| SSR component | a forge `ui/core` primitive composed in `src/views/` — never a raw element where a primitive exists | `governance/FORGE_CONSUMPTION.md` §1b |
+| Inline script in a view | `src/views/layout.tsx`, carrying the nonce — never an unnonced `<script>` | `implementation/UI_GUIDE.md` §2a |
+| Theme token | the `@theme` block in `src/assets/tailwind.css` — never an arbitrary value at a call site | `implementation/UI_GUIDE.md` §5a |
+| Client behaviour | a mounted resumable scope in `src/client/main.ts` — never domain logic, and never a mode the server could render | `implementation/UI_GUIDE.md` §6c |
+| Typed page or site content | `src/model/` — plain shapes, no I/O | `implementation/ARCHITECTURE_GUIDE.md` §2a |
+| External integration | `src/services/`, reached only from a controller | `implementation/ARCHITECTURE_GUIDE.md` §2c |
+| A test | `tests/`, using the `app.request` pattern against `MINIMUM_ENV` | `implementation/HANDLER_TESTING.md` §1a |
+| Build-time config module — asset pipeline, gate step table | `config/` and `src/assets/config.ts` — outside `tsconfig.json`'s `include`, because a module that ships to no runtime must not widen the type program | see _Type System_ |
+| A `.decisions/` document | `.decisions/implementation/` — with its Guide Index row added in the same change. **Never `governance/`**, which a sync overwrites | `governance/AGENT_GUIDE.md` §6d |
+
+Every row names a **concrete destination** and a **`§N`-anchored recipe**. A row whose recipe
+column says only "see the docs" is not a rule; delete it or finish it.
+
 ---
 
 ## Type System
 
-- `"types": []` — global scope uses no `@types/*` packages; Cloudflare Workers types come via the generated `.types/cloudflare.d.ts`
-- `.types/bun-test.d.ts` — minimal `bun:test` module stub for tests
-- Do NOT install or use `bun-types` — it overrides DOM's `fetch` type with Bun-specific properties
-- `@types/bun` is NOT a dependency; the custom stub covers all test needs
+- `"types": []` — global scope uses no `@types/*` packages; Cloudflare Workers types come via the
+  generated `.types/cloudflare.d.ts`
+- `.types/bun-test.d.ts` — a minimal `bun:test` module stub for tests
+- Do **not** install or use `bun-types` — it overrides DOM's `fetch` type with Bun-specific
+  properties. `@types/bun` is not a dependency; the custom stub covers all test needs
+- **`@y-core/forge` resolves to the installed package, and that is the only forge this repo has.**
+  `tsconfig.json` declares exactly one `paths` alias — `@assets` → `./.forge/assets.ts`, the
+  generated asset manifest. `@y-core/forge/*` is **not** aliased: it resolves through
+  `node_modules` like any dependency, so `bun run verify` typechecks against whatever the manifest
+  installs. A checkout of forge sitting elsewhere on the machine is not a dependency here — never
+  imported, and never consulted to answer a question about behaviour
 
-**Note:** `tsconfig.json` declares exactly one `paths` alias — `@assets` → `./.forge/assets.ts`, the generated asset manifest. `@y-core/forge/*` is **not** aliased: it resolves through `node_modules` like any dependency, so `bun run verify` typechecks against whatever the manifest installs. A `file:` dependency is therefore the way to verify a cross-repo change end-to-end before cutting a forge release — and the package name in `dependencies` must stay `@y-core/forge`, since that is what every import in this repo writes.
-
-**Note:** the `file:` link costs one line, in `config/steps.ts`. bun *links* a `file:` dependency and
-realpaths an imported module — though not the entry point — so forge's `app-root.ts` sees its own
-checkout with no `node_modules` above it, and `resolveAppRoot`'s derived branch refuses. `steps.ts`
-therefore sets `FORGE_APP_ROOT` from its own path (cwd-independent) before exporting the table; the
-gate's `types:assets` row inherits it. This stays app-side deliberately — the link is this app's
-workflow choice, and forge should carry no resolution branch for an install shape production never
-uses. The two consequences: `types:assets` is `forge-verify --only types:assets`, so the escape hatch
-and the gate row are literally one thing rather than two spellings of it; and `build:assets`, the one
-asset command outside the gate, passes `--root .` explicitly.
-
-**Note:** `config/` is deliberately outside `include`. `config/steps.ts` imports `@y-core/forge/pkg`, which pulls forge's build-time tree into the type program; that tree typechecks only with node's `process` and `Buffer` in global scope — exactly what `"types": []` withholds from the Worker. It is still linted, via `sources` in the step table.
+**Note:** `config/` is deliberately outside `include`. `config/steps.ts` imports
+`@y-core/forge/pkg`, which pulls forge's build-time tree into the type program; that tree
+typechecks only with node's `process` and `Buffer` in global scope — exactly what `"types": []`
+withholds from the Worker. It is still linted, via `sources` in the step table.
 
 ---
 
@@ -202,4 +296,5 @@ asset command outside the gate, passes `--root .` explicitly.
 Five agents, with their rulesets inlined: `cc-plan` → `cc-dev` → `cc-test`, with `cc-doc` outside
 that pipeline and `cc-tester` as the sole gate runner (_Verification Delegation_ above). They live
 in `.claude/agents/`; reusable slash commands (`c-review`, `c-unreview`) live in
-`.claude/commands/`.
+`.claude/commands/`. Both directories are synced from `@y-core/governance` and overwritten
+wholesale — a local change to either belongs in the corpus, not here.

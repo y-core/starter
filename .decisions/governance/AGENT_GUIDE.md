@@ -125,10 +125,10 @@ surrounding narrative. Target 3–8 words.
 | Avoid | Prefer |
 |---|---|
 | `### Rules` | `### 3f. Barrel Export Rules and Constraints` |
-| `### Setup` | `### 1a. createApp Factory Setup and Configuration` |
-| `### The mod.ts Pattern` | `### 1a. mod.ts Barrel Export and Module Catalog` |
+| `### Setup` | `### 1a. Application Factory Setup and Configuration` |
+| `### The Barrel Pattern` | `### 1a. Barrel Export and Module Catalog` |
 | `### Domain Errors` | `### 1b. Domain Error Sentinels and HTTP Status Mapping` |
-| `### Security headers` | `### 6b. createSecurityHeaders CSP Nonce Injection` |
+| `### Security headers` | `### 6b. Security-Header Middleware and Nonce Injection` |
 
 Subsections under one parent should share a grammatical shape — all rules, or all patterns,
 not a mix. Consistency is what makes a `## 0.` block scannable.
@@ -162,7 +162,7 @@ Good:
 
 Avoid — a keyword dump reads as noise and dates badly:
 
-    description: "barrel exports, mod.ts pattern, catalog, validate-exports, app.map, bindings, CSP nonce, partial render, Tailwind tokens"
+    description: "barrel exports, catalog, export check, route map, bindings, CSP nonce, partial render, design tokens"
 
 ---
 
@@ -320,7 +320,7 @@ because both are routinely got wrong:
 Governing documents describe the current state of the system. They carry no history.
 
 Forbidden: calendar dates in `YYYY-MM-DD` form, "as of" qualifiers, task or ticket
-identifiers, and changelog notes ("renamed from…", "fixed by…", "previously…").
+identifiers, and changelog notes (`renamed from…`, `fixed by…`, `previously…`).
 
 A rule that needs a date to make sense is not a rule yet. `CHANGELOG.md` and git history own
 the past; a governing document owns only the present.

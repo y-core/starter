@@ -103,6 +103,11 @@ Where the choice is a dedicated directory, the reason is usually that tests are 
 *question they answer* — unit, integration, end-to-end — rather than by the file they cover. That
 is a legitimate taxonomy, and it is the one thing co-location cannot express.
 
+**Whichever directory the repository chooses, a test file's name matches the name of the source
+file it covers** — `headers.ts` is tested by `headers.test.ts`, wherever that file sits. Grouping
+by question is a choice about *placement*; it is not a licence to name a test after the question
+instead, which leaves the source file with no test findable from its own name.
+
 ### 2b. The Minimum Environment Fixture
 
 **Define one shared fixture holding the smallest environment that boots the app**, and derive

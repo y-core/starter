@@ -214,6 +214,10 @@ returned promise cover every piece of work the function started, or only the hea
 deleted, would it still pass?* A negative case that omits several things at once passes as soon
 as any guard fires ([`TESTING.md`](./TESTING.md) §5b).
 
+**Name reachability.** Read each new export. *Could a reader who knows the domain but not this
+codebase name this symbol from the question it answers — and conversely, does the name carry a
+word that earns nothing?* ([`PRODUCTION_TS_RULES.md`](./PRODUCTION_TS_RULES.md) §7.)
+
 ---
 
 ## 4. Severity Calibration

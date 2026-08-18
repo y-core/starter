@@ -179,8 +179,9 @@ Gate runs go to `cc-tester` regardless of depth.
 
 ## Navigation
 
-Plain `Read`, `Grep`, and `Glob`. If the TypeScript LSP plugin is enabled, prefer it for symbol
-navigation — locating a definition, and especially **finding every reference before you change a
+`Read`, `Grep`, and `Glob` for discovery — finding files, searching patterns, reaching a symbol
+you can only name. **The TypeScript LSP plugin is available; symbol navigation goes through it**
+— locating a definition, and especially **finding every reference before you change a
 signature**, which `Grep` will under-report on re-exported or aliased symbols.
 
 ---
@@ -199,7 +200,11 @@ signature**, which `Grep` will under-report on re-exported or aliased symbols.
 - **Test fakes**: `fake` prefix (`fakeKV`, `fakeContext`)
 - **Module constants**: SCREAMING_SNAKE_CASE
 - **Option and shape type suffixes** — `*Config` for validated data, `*Options` for behaviour
-  knobs, `*Definition` for declarative shapes
+  knobs, `*Definition` for declarative shapes: see `governance/PRODUCTION_TS_RULES.md` §1d, which
+  owns the naming rule these suffixes attach to
+- **Reachability** — an exported name carries a domain word, not just a verb and a generic noun;
+  one domain word is the floor and roughly the ceiling: see
+  `governance/PRODUCTION_TS_RULES.md` §7, which owns the rule
 
 ### Structure
 

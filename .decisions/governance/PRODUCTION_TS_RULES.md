@@ -1,11 +1,11 @@
 ---
 title: Production TypeScript Rules
-description: "Six non-negotiable coding rules: zero global state, explicit errors, validation first, testability, the comment budget, and declarative style."
+description: "Seven non-negotiable coding rules: zero global state, explicit errors, validation first, testability, the comment budget, declarative style, and name distinctiveness."
 ---
 
 # Production TypeScript Rules
 
-> Six non-negotiable rules for every TypeScript file in the repository, keeping it testable,
+> Seven non-negotiable rules for every TypeScript file in the repository, keeping it testable,
 > predictable, and safe in the Cloudflare Workers runtime.
 >
 > Defers to: [`ERROR_HANDLING.md`](./ERROR_HANDLING.md) §1 for the `Result` primitive;
@@ -36,6 +36,11 @@ description: "Six non-negotiable coding rules: zero global state, explicit error
 - §5c Where Rationale Belongs Instead: the routing table
 - §5d Tests Are Not Exempt: the test name is the documentation
 - §6 Declarative Over Imperative Rule: expression over statement
+- §7 Name Distinctiveness Rule: a name is the only index from a question to the code
+- §7a The Name Is the First Hop: discovery is name-shaped, understanding is LSP-shaped
+- §7b One Domain Word — and No More Than the Domain Needs: the floor, and the ceiling beside it
+- §7c One Spelling Per Concept: two words for one entity get built twice
+- §7d Parameters Distinguished by Type, Not Order: make the compiler reject the transposition
 
 ---
 
@@ -228,10 +233,8 @@ alone.
 symbol does. Not why it exists, not what it does not do, not what was considered instead.
 
 ```typescript
-/** Creates an app with a structured error boundary and config validation. */
-export function createApp<Bindings extends object = Record<string, unknown>>(
-  options?: AppOptions<Bindings>,
-): App<Bindings>
+/** Creates a flash-message reader and writer bound to the app's session config. */
+export function createAppFlash(config: AppConfig): Flasher
 ```
 
 **2. The visibility tags `@public` and `@internal`.** These are machine-readable markers, not
@@ -290,6 +293,7 @@ It is the *placement* that is wrong. Route it to the one place that owns it:
 | A claim about behaviour | a test that asserts it |
 | Work not yet done | a ledger task |
 | The history of a decision | the commit message |
+| A capability the repository deliberately does **not** have | the matching `implementation/` doc |
 
 A comment that could live in any row above does not also live in the source. Duplicating it
 there is how the two copies drift.
@@ -314,3 +318,77 @@ literal itself.
 
 The rule is about expressing intent, not about avoiding loops on principle: reach for a loop
 when the operation genuinely is sequential or early-exiting.
+
+---
+
+## 7. Name Distinctiveness Rule
+
+### 7a. The Name Is the First Hop
+
+**A symbol you cannot name, you cannot navigate to — by any tool.** Once a symbol is in hand,
+its definition, its references, and its type are all exact and cost one lookup. Nothing supplies
+the symbol itself. A question arrives as words — *where is the retry delay computed* — and the
+only index from those words to the code is the words already in the code.
+
+This is the division of labour `CLAUDE.md` *Code Intelligence* states, seen from the other end:
+**discovery is name-shaped, understanding is tool-shaped.** §7 governs the first half only. A
+symbol whose name carries no word from its domain is unreachable by the question that should
+find it, and stays unreachable until someone happens on it while reading something else.
+
+### 7b. One Domain Word — and No More Than the Domain Needs
+
+**Every exported symbol carries at least one word naming its domain, not only its shape.** The
+verb rule fixes the prefix and the suffix rules fix the tail: `create*` says a factory is being
+called, `*Options` says a bag of knobs is being passed. Neither says *what of*. A name assembled
+only from those parts — `createClient`, `createStore`, `createLogger` — is a prefix and a shape
+with nothing between them, and the missing middle is the only part a question can match on. §1d
+owns the verb; this section owns the word the verb is applied to.
+
+```typescript
+export function createContactStore(config: AppConfig): ContactStore   // nameable from a question
+export function createStore(config: AppConfig): ContactStore          // prefix and shape only
+```
+
+**The floor is one domain word. It is also, near enough, the ceiling.** Past that word, added
+words buy nothing a reader or a tool did not already have: references resolve exactly whichever
+name is chosen, so a longer name purchases precision that is already supplied and charges it to
+every call site that has to read and retype it. `createStripeApiClientFactory` is a defect in the
+same way `createClient` is — one name says nothing, the other says one thing four times. **This
+is a floor of one domain word, not a target to exceed.** The terseness §6 asks for applies here
+unchanged.
+
+### 7c. One Spelling Per Concept
+
+**One concept, one word, across the whole tree.** Where `org`, `customer`, and `tenant` all name
+the same entity, the codebase holds three names for one thing and no way to say so.
+
+The cost is not retrieval — a reference lookup finds the symbol under any spelling. It is
+comprehension: a reader holding two words for one entity cannot tell whether the code models one
+thing or two, and the safe assumption is two. That reader writes a second helper beside a first
+that already did the job, and the synonym pair becomes a real duplicate.
+
+**An import alias is the same defect at smaller scale.** Renaming a symbol at its call site
+replaces a name the codebase agreed on with one only that file knows, so a reader arriving with
+the agreed word does not find it there. Alias to resolve a genuine collision, never for taste.
+
+### 7d. Parameters Distinguished by Type, Not Order
+
+**Where two or more parameters share a primitive type, the signature admits a swapped-argument
+bug that nothing catches.** Hover shows the parameter names, but a transposed pair of same-typed
+arguments typechecks, lints, and ships:
+
+```typescript
+function grantAccess(userId: string, resourceId: string, role: string): Result<Grant>
+grantAccess(resourceId, userId, role)   // compiles, and is wrong
+```
+
+**Give the compiler something to reject** — a branded or wrapper type per argument, or a single
+named options object. Either turns the transposition into a type error:
+
+```typescript
+function grantAccess(grant: { userId: UserId; resourceId: ResourceId; role: Role }): Result<Grant>
+```
+
+The compiler is the one reviewer that cannot be skipped, and this is the cheapest class of bug to
+hand it. Distinct from §3, which governs *untrusted* input arriving at a boundary: §7d governs
+*internal* signatures, where the values are already trusted and the whole risk is positional.

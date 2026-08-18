@@ -3,6 +3,9 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "governance": {
+    "kind": "apps"
+  },
   "scripts": {
     "build:assets": "forge-assets build all --minify --root . --config src/assets/config.ts --out .forge/assets.ts",
     "dev": "bun run build:assets && wrangler dev src/worker.dev.ts --live-reload",
@@ -13,12 +16,13 @@
     "verify": "forge-verify"
   },
   "dependencies": {
-    "@y-core/forge": "https://codeload.github.com/y-core/forge/tar.gz/refs/tags/v0.0.86"
+    "@y-core/forge": "https://codeload.github.com/y-core/forge/tar.gz/refs/tags/v0.0.88"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.4",
     "@tailwindcss/cli": "^4.3.1",
     "@typescript/native-preview": "^7.0.0-dev.20260707.2",
+    "@y-core/governance": "https://codeload.github.com/y-core/governance/tar.gz/refs/tags/v0.1.1",
     "esbuild": "^0.28.1",
     "sharp": "^0.35.2",
     "tailwindcss": "^4.3.1",

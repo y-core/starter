@@ -20,18 +20,20 @@ import { cloudflareWorkerSteps, type Step } from "@y-core/forge/pkg";
 /** This repository's root, derived from this file rather than from `process.cwd()`. */
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-// This app resolves forge through `"@y-core/forge": "file:../forge"`, so a cross-repo change is
-// verified here before forge cuts a release. bun *links* a `file:` dependency and realpaths an
-// imported module — though not the entry point — so forge's own `app-root.ts` sees its checkout with
-// no `node_modules` above it, and `resolveAppRoot`'s derived branch refuses. The preset's
-// `types:assets` row passes no `--root`, but it inherits this process's environment, and
-// `FORGE_APP_ROOT` is the escape hatch `forge-assets` already publishes for exactly this.
-//
-// It belongs here and not in forge: the link is a choice this app made for its own workflow, and a
-// released library should carry no resolution branch for an install shape production never uses.
-// `??=` so an explicit `FORGE_APP_ROOT` in the environment still wins.
+// Unused while `package.json` pins a released tarball, and kept for the swap to
+// `"@y-core/forge": "file:../forge"` that verifies a cross-repo change before forge cuts a release.
+// bun *links* a `file:` dependency and realpaths an imported module — though not the entry point —
+// so forge's own `app-root.ts` sees its checkout with no `node_modules` above it, and
+// `resolveAppRoot`'s derived branch refuses. The preset's `types:assets` row passes no `--root`, but
+// it inherits this process's environment, and `FORGE_APP_ROOT` is the escape hatch `forge-assets`
+// already publishes for exactly this. It belongs here and not in forge: a released library should
+// carry no resolution branch for an install shape production never uses.
 process.env.FORGE_APP_ROOT ??= ROOT;
 
-export const STEPS: readonly Step[] = cloudflareWorkerSteps({ sources: ["src/", "tests/", "config/"], assetConfig: "src/assets/config.ts" });
+export const STEPS: readonly Step[] = cloudflareWorkerSteps({
+  sources: ["src/", "tests/", "config/"],
+  assetConfig: "src/assets/config.ts",
+  governance: true,
+});
 
 export default STEPS;
