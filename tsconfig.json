@@ -27,5 +27,9 @@
     "tests/**/*.ts",
     "tests/**/*.tsx",
     ".types/**/*.d.ts"
+  ],
+  "exclude": [
+    "tests/browser/**",
+    "tests/workerd/**"
   ]
 }

@@ -1,17 +1,23 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { CSRF_FIELD_DEFAULT, createCsrfToken, importCsrfKey, TURNSTILE_FIELD_DEFAULT } from "@y-core/forge/form";
+
+import { CSRF_FIELD_DEFAULT, TURNSTILE_FIELD_DEFAULT } from "@y-core/forge/form";
+import { createTestContext, fakeKV, mintTestCsrfToken } from "@y-core/forge/testing";
+
 import type { AppConfig } from "../src/app/config";
 import type { AppEnv } from "../src/app/context";
 import { CONTACT_DECOY, ContactSchema, contactAction } from "../src/controllers/actions/contact";
 import app from "../src/worker";
 import devApp from "../src/worker.dev";
-import { makeTestContext } from "./setup";
 
-const BASE_URL = "https://example.com";
+const SITE_ORIGIN = "https://example.com";
+
+/** A hostname the site origin does not name, so a siteverify answer bearing it can only pass
+ *  through the dev entry point's allowance. */
+const DEV_HOSTNAME = "elsewhere.example";
 
 const BASE_TEST_CONFIG: AppConfig = {
   site: {
-    url: { origin: BASE_URL, hostname: "example.com", protocol: "https:", allowedOrigins: [BASE_URL, "https://www.example.com"] },
+    url: { origin: SITE_ORIGIN, hostname: "example.com", protocol: "https:", allowedOrigins: [SITE_ORIGIN, "https://www.example.com"] },
     debug: false,
   },
   security: { csrf: { secret: "de7bf4aef360e3a4c3254c9cec7e45d0f1fd98cc2219c62b5b07e826ba1bcc6e" } },
@@ -55,7 +61,7 @@ const EXPECTED_EMAIL_ERROR_HTML =
  * the schema's rule — so neither the issue count nor the response length is caller-steerable.
  */
 function refusal(field: string): string {
-  return `<div class="rounded-2xl border border-status-danger-border bg-status-danger-subtle px-4 py-3 text-sm text-status-danger-subtle-foreground"><p>Please correct the following fields.</p><ul class="mt-2 list-disc pl-5"><li>${field}</li></ul></div>`;
+  return `<div class="rounded-2xl border border-status-danger-border bg-status-danger-subtle px-4 py-3 text-sm text-status-danger-subtle-foreground"><p>Please correct the following fields.</p><ul class="mt-2 list-disc ps-5"><li>${field}</li></ul></div>`;
 }
 
 const MOCK_ASSETS = { fetch: async () => new Response("", { status: 200 }) };
@@ -64,13 +70,16 @@ const TEST_CSRF_SECRET = "de7bf4aef360e3a4c3254c9cec7e45d0f1fd98cc2219c62b5b07e8
 
 const MINIMUM_ENV = {
   ASSETS: MOCK_ASSETS,
-  BASE_URL,
+  SITE_ORIGIN,
   CSRF_SECRET: TEST_CSRF_SECRET,
   EMAIL_API_KEY: "test-api-key",
   EMAIL_FROM: "from@example.com",
   EMAIL_TO: "to@example.com",
   TURNSTILE_SECRET_KEY: "test-ts-key",
   TURNSTILE_SITE_KEY: "test-site-key",
+  // Set in every case, so the production worker is held against it throughout and not only in the
+  // one test below that names it. It must never widen what production accepts.
+  TURNSTILE_DEV_HOSTNAME: DEV_HOSTNAME,
 } as unknown as Env;
 
 let _savedFetch: typeof globalThis.fetch;
@@ -87,8 +96,7 @@ beforeAll(async () => {
     }
     return _savedFetch(url, ...args);
   };
-  const csrfKey = await importCsrfKey(TEST_CSRF_SECRET);
-  _csrfToken = await createCsrfToken(csrfKey, "/api/contact");
+  _csrfToken = await mintTestCsrfToken(TEST_CSRF_SECRET, "/api/contact");
 });
 
 afterAll(() => {
@@ -96,7 +104,7 @@ afterAll(() => {
 });
 
 function postHeaders(): Record<string, string> {
-  return { ...HTMX_HEADERS, "X-CSRF-Token": _csrfToken, Origin: BASE_URL };
+  return { ...HTMX_HEADERS, "X-CSRF-Token": _csrfToken, Origin: SITE_ORIGIN };
 }
 
 describe("GET /api/health", () => {
@@ -179,7 +187,7 @@ describe("POST /api/contact — CSRF protection", () => {
   it("returns 403 when HX-Request header is absent", async () => {
     const response = await app.request(
       "/api/contact",
-      { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", Origin: BASE_URL }, body: VALID_FORM.toString() },
+      { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", Origin: SITE_ORIGIN }, body: VALID_FORM.toString() },
       MINIMUM_ENV,
     );
 
@@ -192,7 +200,7 @@ describe("POST /api/contact — CSRF protection", () => {
       "/api/contact",
       {
         method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded", "HX-Request": "false", Origin: BASE_URL },
+        headers: { "content-type": "application/x-www-form-urlencoded", "HX-Request": "false", Origin: SITE_ORIGIN },
         body: VALID_FORM.toString(),
       },
       MINIMUM_ENV,
@@ -202,7 +210,7 @@ describe("POST /api/contact — CSRF protection", () => {
   });
 
   it("returns 403 when X-CSRF-Token header is absent", async () => {
-    const headers = { ...HTMX_HEADERS, Origin: BASE_URL }; // no X-CSRF-Token
+    const headers = { ...HTMX_HEADERS, Origin: SITE_ORIGIN }; // no X-CSRF-Token
     const response = await app.request("/api/contact", { method: "POST", headers, body: VALID_FORM.toString() }, MINIMUM_ENV);
 
     expect(response.status).toBe(403);
@@ -211,7 +219,7 @@ describe("POST /api/contact — CSRF protection", () => {
   it("returns 403 when X-CSRF-Token is forged (invalid value)", async () => {
     const response = await app.request(
       "/api/contact",
-      { method: "POST", headers: { ...HTMX_HEADERS, "X-CSRF-Token": "invalid-forged-token", Origin: BASE_URL }, body: VALID_FORM.toString() },
+      { method: "POST", headers: { ...HTMX_HEADERS, "X-CSRF-Token": "invalid-forged-token", Origin: SITE_ORIGIN }, body: VALID_FORM.toString() },
       MINIMUM_ENV,
     );
 
@@ -236,7 +244,7 @@ describe("POST /api/contact — malformed requests", () => {
       "/api/contact",
       {
         method: "POST",
-        headers: { "content-type": "application/json", "HX-Request": "true", Origin: BASE_URL },
+        headers: { "content-type": "application/json", "HX-Request": "true", Origin: SITE_ORIGIN },
         body: JSON.stringify({ name: "Jane", email: "jane@example.com", message: "Hello there." }),
       },
       MINIMUM_ENV,
@@ -247,7 +255,7 @@ describe("POST /api/contact — malformed requests", () => {
   });
 
   it("returns 415 for a request with no body", async () => {
-    const response = await app.request("/api/contact", { method: "POST", headers: { "HX-Request": "true", Origin: BASE_URL } }, MINIMUM_ENV);
+    const response = await app.request("/api/contact", { method: "POST", headers: { "HX-Request": "true", Origin: SITE_ORIGIN } }, MINIMUM_ENV);
 
     expect(response.status).toBe(415);
   });
@@ -480,7 +488,7 @@ describe("POST /api/contact — Turnstile verification", () => {
   // one-`<li>` body naming the schema's first declared field, never the guard — so a bot cannot
   // read which guard it hit off the response. Assert the status, not a guard-specific message.
   it("refuses with 422 when the cf-turnstile-response token is missing", async () => {
-    const c = makeTestContext(makeRequest(VALID_FORM), {} as AppEnv, BASE_TEST_CONFIG);
+    const c = createTestContext<AppEnv, AppConfig>(makeRequest(VALID_FORM), { env: {} as AppEnv, config: BASE_TEST_CONFIG });
     const response = await contactAction(c);
 
     expect(response.status).toBe(422);
@@ -494,7 +502,7 @@ describe("POST /api/contact — Turnstile verification", () => {
     body.set("cf-turnstile-response", "bad-token");
 
     try {
-      const c = makeTestContext(makeRequest(body), {} as AppEnv, BASE_TEST_CONFIG);
+      const c = createTestContext<AppEnv, AppConfig>(makeRequest(body), { env: {} as AppEnv, config: BASE_TEST_CONFIG });
       const response = await contactAction(c);
 
       expect(response.status).toBe(422);
@@ -504,7 +512,7 @@ describe("POST /api/contact — Turnstile verification", () => {
   });
 
   it("renders a guard refusal byte-identical to a validation refusal", async () => {
-    const c = makeTestContext(makeRequest(VALID_FORM), {} as AppEnv, BASE_TEST_CONFIG);
+    const c = createTestContext<AppEnv, AppConfig>(makeRequest(VALID_FORM), { env: {} as AppEnv, config: BASE_TEST_CONFIG });
     const response = await contactAction(c);
 
     // `name` is the schema's first declared field — the guard names it whatever actually failed.
@@ -524,8 +532,54 @@ describe("POST /api/contact — Turnstile verification", () => {
     body.set("cf-turnstile-response", "valid-token");
 
     try {
-      const c = makeTestContext(makeRequest(body), {} as AppEnv, BASE_TEST_CONFIG);
+      const c = createTestContext<AppEnv, AppConfig>(makeRequest(body), { env: {} as AppEnv, config: BASE_TEST_CONFIG });
       const response = await contactAction(c);
+
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe(EXPECTED_SUCCESS_HTML);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+// The whole point of routing the override through `worker.dev.ts` rather than through the schema:
+// production reads the same environment and is unmoved by it. These two cases share every input but
+// the entry point, so a regression that made the allowance environment-driven fails the first.
+describe("POST /api/contact — TURNSTILE_DEV_HOSTNAME", () => {
+  const siteverifyElsewhere = async (url: URL | RequestInfo) => {
+    if (url.toString() === TURNSTILE_URL) return new Response(JSON.stringify({ success: true, hostname: DEV_HOSTNAME }));
+    return new Response(null, { status: 202 });
+  };
+
+  it("refuses a token verified against another hostname on the production entry", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = siteverifyElsewhere as typeof globalThis.fetch;
+
+    try {
+      const response = await app.request(
+        "/api/contact",
+        { method: "POST", headers: postHeaders(), body: VALID_FORM_WITH_TOKEN.toString() },
+        MINIMUM_ENV,
+      );
+
+      expect(response.status).toBe(422);
+      expect(await response.text()).toBe(refusal("name"));
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("accepts the same token on the dev entry, which licenses the override", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = siteverifyElsewhere as typeof globalThis.fetch;
+
+    try {
+      const response = await devApp.request(
+        "/api/contact",
+        { method: "POST", headers: postHeaders(), body: VALID_FORM_WITH_TOKEN.toString() },
+        MINIMUM_ENV,
+      );
 
       expect(response.status).toBe(200);
       expect(await response.text()).toBe(EXPECTED_SUCCESS_HTML);
@@ -737,36 +791,31 @@ describe("POST /api/contact — edge cases", () => {
   });
 });
 
-const MOCK_LOGS_KV = {
-  list: async () => ({ keys: [], list_complete: true }),
-  get: async () => null,
-  getWithMetadata: async () => ({ value: null, metadata: null }),
-  put: async () => {},
-  delete: async () => {},
-};
 // `LOG_LEVEL` unset → `site.debug` is false → the viewer's `access` predicate denies.
-const LOGS_ENV = { ...MINIMUM_ENV, LOGS_KV: MOCK_LOGS_KV } as unknown as Env;
-const LOGS_DEBUG_ENV = { ...MINIMUM_ENV, LOGS_KV: MOCK_LOGS_KV, LOG_LEVEL: "DEBUG" } as unknown as Env;
+// A fresh `fakeKV` per request: it is a working namespace, so the request logger's own entry would
+// otherwise accumulate across cases and the empty-state assertions would depend on test order.
+const logsEnv = () => ({ ...MINIMUM_ENV, LOGS_KV: fakeKV() }) as unknown as Env;
+const logsDebugEnv = () => ({ ...MINIMUM_ENV, LOGS_KV: fakeKV(), LOG_LEVEL: "DEBUG" }) as unknown as Env;
 
 const EXPECTED_EMPTY_TBODY =
   '<tbody id="log-tbody"><tr><td colspan="5" class="px-4 py-4 text-center"><div class="flex flex-col items-center gap-2"><span class="text-sm text-muted-foreground">No log entries have been recorded yet.</span></div></td></tr></tbody>';
 
 describe("GET /showcase/logs — access control", () => {
   it("returns 403 when site.debug is false (LOG_LEVEL unset)", async () => {
-    const res = await app.request("/showcase/logs", {}, LOGS_ENV);
+    const res = await app.request("/showcase/logs", {}, logsEnv());
     expect(res.status).toBe(403);
     expect(await res.text()).toBe("Forbidden");
   });
 
   it("returns 403 for the HTMX partial too", async () => {
-    const res = await app.request("/showcase/logs", { headers: { "HX-Request": "true" } }, LOGS_ENV);
+    const res = await app.request("/showcase/logs", { headers: { "HX-Request": "true" } }, logsEnv());
     expect(res.status).toBe(403);
   });
 });
 
 describe("GET /showcase/logs — full page", () => {
   it("returns 200 status when LOG_LEVEL is DEBUG", async () => {
-    const res = await app.request("/showcase/logs", {}, LOGS_DEBUG_ENV);
+    const res = await app.request("/showcase/logs", {}, logsDebugEnv());
     expect(res.status).toBe(200);
   });
 
@@ -774,11 +823,11 @@ describe("GET /showcase/logs — full page", () => {
   // so the page arrives inside the shell that carries the dark class and the pre-paint theme script.
   // The viewer's own heading is what identifies the page; the `<title>` belongs to the app.
   it("renders the viewer inside the app's Layout, not a shell of forge's own", async () => {
-    const res = await app.request("/showcase/logs", {}, LOGS_DEBUG_ENV);
+    const res = await app.request("/showcase/logs", {}, logsDebugEnv());
     const text = await res.text();
     expect(text).toContain("<!DOCTYPE html>");
     expect(text).toContain("<title>Forge Studio</title>");
-    expect(text).toContain('<h1 class="text-2xl font-semibold tracking-tight text-foreground">Request Log</h1>');
+    expect(text).toContain('<h1 class="text-2xl font-semibold tracking-tight text-balance text-foreground">Request Log</h1>');
     expect(text).toContain('data-scope="theme"');
     expect(text).toContain('hx-get="/showcase/logs"');
     expect(text).toContain(">Timestamp</th>");
@@ -788,7 +837,7 @@ describe("GET /showcase/logs — full page", () => {
   });
 
   it("includes required security headers", async () => {
-    const res = await app.request("/showcase/logs", {}, LOGS_DEBUG_ENV);
+    const res = await app.request("/showcase/logs", {}, logsDebugEnv());
     expect(res.headers.get("content-security-policy")).not.toBeNull();
     expect(res.headers.get("strict-transport-security")).toBe("max-age=63072000; includeSubDomains; preload");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
@@ -798,7 +847,7 @@ describe("GET /showcase/logs — full page", () => {
 
 describe("GET /showcase/logs — HTMX partial", () => {
   it("returns only the tbody fragment when HX-Request is true", async () => {
-    const res = await app.request("/showcase/logs", { headers: { "HX-Request": "true" } }, LOGS_DEBUG_ENV);
+    const res = await app.request("/showcase/logs", { headers: { "HX-Request": "true" } }, logsDebugEnv());
     expect(res.status).toBe(200);
     const text = await res.text();
     // exact match proves TBODY_ID in the partial equals the id the full page registers as swap target
@@ -806,7 +855,7 @@ describe("GET /showcase/logs — HTMX partial", () => {
   });
 
   it("does not include the full page shell in the partial response", async () => {
-    const res = await app.request("/showcase/logs", { headers: { "HX-Request": "true" } }, LOGS_DEBUG_ENV);
+    const res = await app.request("/showcase/logs", { headers: { "HX-Request": "true" } }, logsDebugEnv());
     const text = await res.text();
     expect(text).not.toContain("<!DOCTYPE html>");
     expect(text).not.toContain("<title>Request Log</title>");
@@ -827,7 +876,7 @@ describe("POST /api/contact — email delivery failure", () => {
     };
 
     try {
-      const c = makeTestContext(makeRequest(VALID_FORM_WITH_TOKEN), {} as AppEnv, BASE_TEST_CONFIG);
+      const c = createTestContext<AppEnv, AppConfig>(makeRequest(VALID_FORM_WITH_TOKEN), { env: {} as AppEnv, config: BASE_TEST_CONFIG });
       const response = await contactAction(c);
 
       expect(response.status).toBe(500);

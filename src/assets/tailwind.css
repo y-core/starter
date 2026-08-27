@@ -1,26 +1,30 @@
-@import "tailwindcss";
-
-/* `forge.css` carries `@source` paths resolved relative to itself — which is what makes forge's
-   classes reachable at all, since Tailwind v4 never scans `node_modules`. `theme-slate.css` is
-   optional and comes after, re-declaring the twelve gray steps and nothing else. */
-@import "@y-core/forge/ui/assets/css/forge.css";
+/* Tailwind composed with forge — the one import an app writes, and the only one this app needs,
+   since it passes no Tailwind import options. `custom.css` is this app's own colour scheme,
+   imported after it so its twenty-four steps replace `theme-neutral.css`'s by ordinary cascade. */
+@import "@y-core/forge/ui/assets/css/tailwind.css";
 @import "./css/custom.css";
-/*@import "@y-core/forge/ui/assets/css/theme-gray.css";*/
 
-@source "../views/**/*.tsx";
-@source "../model/**/*.ts";
 /* Forge's own `@source` paths cover the components every app renders. The two opt-in surfaces:
-   the log viewer, and the component showcase this starter serves. */
-@source "../../node_modules/@y-core/forge/src/logging/**/*.tsx";
-@source "../../node_modules/@y-core/forge/src/ui/show/**/*.tsx";
+   the log viewer, and the component showcase this starter serves. Both are bare directories, the
+   form forge documents — a glob narrowed to `.tsx` would miss the class strings in their
+   `.ts` files. */
+@source "../../node_modules/@y-core/forge/src/logging";
+@source "../../node_modules/@y-core/forge/src/ui/show";
 
 @theme {
-  --font-display: Georgia, "Times New Roman", serif;
-  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-serif: Georgia, "Times New Roman", serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --tracking-eyebrow: 0.3em;
 }
 
 @layer base {
-  html { @apply scroll-smooth; }
-  body { @apply min-h-screen bg-background font-body text-foreground antialiased; }
-  ::selection { @apply bg-primary/20 text-foreground; }
+  html {
+    @apply scroll-smooth;
+  }
+  body {
+    @apply min-h-screen bg-background font-sans text-foreground antialiased;
+  }
+  ::selection {
+    @apply bg-primary/20 text-foreground;
+  }
 }

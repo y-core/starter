@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
-import type { Logger } from "@y-core/forge/logging";
+
+import { nullLogger } from "@y-core/forge/testing";
+
 import type { EmailConfig } from "../src/app/config";
 import { sendContactEmail } from "../src/services/email";
-
-const nullLogger: Logger = { debug: () => {}, info: () => {}, warn: () => {}, error: () => {}, flush: async () => {}, child: () => nullLogger };
 
 const EMAIL_API_URL = "https://api.mailchannels.net/tx/v1/send";
 

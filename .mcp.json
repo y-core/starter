@@ -2,7 +2,12 @@
   "mcpServers": {
     "ledger": {
       "type": "http",
-      "url": "http://task-forge:8787/mcp/starter"
+      "url": "https://task-forge.devbox.test:8443/mcp/starter"
+    },
+    "warden": {
+      "type": "stdio",
+      "command": "bun",
+      "args": ["node_modules/@y-core/forge/warden/src/bin.ts", "serve", "--dependency"]
     }
   }
 }

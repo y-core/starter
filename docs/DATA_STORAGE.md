@@ -15,7 +15,7 @@ description: "The KV access patterns this app uses, binding validation at startu
 
 - §1 LOGS_KV: current KV usage via kvLogChannel, readLogs, graceful degradation
 - §1a kvLogChannel
-- §1b readLogs — Admin Log Viewer
+- §1b Log Viewer Reads
 - §1c LOGS_KV Binding Declaration
 - §2 createKVStore: typed KV access pattern, jsonCodec, operations, TTL rules
 - §2a Typed Store with jsonCodec
@@ -32,9 +32,9 @@ description: "The KV access patterns this app uses, binding validation at startu
 - §4b serveObject — Direct Response from R2
 - §4c Signed URLs for Restricted Object Access
 - §4d Add R2 Binding to wrangler.jsonc
-- §5 Binding validation: validateBindings at startup, graceful vs fail-fast strategies
+- §5 Binding validation: validateBindings middleware, optional shape checks, graceful vs fail-fast
 - §5a Graceful Degradation vs Fail-Fast
-- §5b validateBindings at Startup
+- §5b validateBindings — one shape check per isolate
 - §5c validateXBinding vs resolveXClient
 
 ---
@@ -58,12 +58,12 @@ When `LOGS_KV` is absent (bun test, local dev without binding), `requestLogger`
 falls back to `consoleChannel()` only. The absence does not cause an error because
 log persistence is non-critical — see §5a for the full degradation policy.
 
-### 1b. readLogs — Admin Log Viewer
+### 1b. Log Viewer Reads
 
-The `/admin/logs` route is handled by `adminLogsController` in `src/controllers/admin-logs.tsx`.
+The `/showcase/logs` route is handled by `showLogsController` in `src/controllers/show.logs.tsx`.
 App code does not call `KVNamespace` methods directly for log retrieval —
-`readLogViewer` from `@y-core/forge/logging/http` handles pagination, key prefix filtering,
-and JSON deserialization. `LogViewerContent` renders the UI. For the full logging architecture
+`loadLogViewer` from `@y-core/forge/logging/show` handles pagination, key prefix filtering,
+JSON deserialization and rendering — it returns a `Response`, not data. For the full logging architecture
 see [STRUCTURED_LOGGING.md](./STRUCTURED_LOGGING.md).
 
 ### 1c. LOGS_KV Binding Declaration
@@ -265,27 +265,39 @@ feature is security-critical or correctness-critical.
 Never introduce a conditional that silently skips security enforcement because a
 binding is absent.
 
-### 5b. validateBindings at Startup
+### 5b. validateBindings — one shape check per isolate
 
-Compose all critical binding checks using `validateBindings` from `@y-core/forge/app`.
-The callback receives `env` and returns an array of `string | null` — one entry per
-check. Any non-null entry causes the worker to throw before it serves any request.
+`validateBindings` from `@y-core/forge/context` is a **middleware**, registered in
+`registerMiddleware`. It takes a schema and caches the `env` reference it last validated, so the
+shape check costs one pass per isolate rather than one per request.
 
-    import { validateBindings } from "@y-core/forge/app"
-    import { validateD1Binding } from "@y-core/forge/storage/db"
-    import { validateKVBinding } from "@y-core/forge/storage/kv"
-    import { validateR2Binding } from "@y-core/forge/storage/r2"
+    import { bindingSetSchema, validateBindings } from "@y-core/forge/context"
 
-    // Called after createWorker, before routes are registered:
-    validateBindings(app, (env) => [
-      validateD1Binding(env, "DB"),
-      validateKVBinding(env, "REQUIRED_KV"),
-      validateR2Binding(env, "MEDIA_BUCKET"),
-    ])
+    app.use(
+      "*",
+      validateBindings(
+        bindingSetSchema([
+          { name: "LOGS_KV", methods: ["get", "put", "list"], label: "a KV namespace binding", optional: true },
+          { name: "RATE_LIMITER", methods: ["limit"], label: "a rate-limiter binding", optional: true },
+        ]),
+      ),
+    )
 
-Do not include `LOGS_KV` or `RATE_LIMITER` in `validateBindings` — they degrade
-gracefully and must remain optional for `bun test` and local dev without a full
-`wrangler.jsonc` binding configuration.
+`bindingSetSchema` covers several bindings in one schema, so an env is validated in a single pass;
+`bindingSchema(name, methods, label, options?)` is the single-binding form.
+
+**`optional: true` is what makes this a shape check rather than a presence check.** An absent
+binding passes — `LOGS_KV` and `RATE_LIMITER` both degrade, to console-only logging and a no-op
+limiter, and neither is present in `bun test` or in a `wrangler dev` without a full binding
+configuration. A binding that *is* present but carries the wrong methods still fails.
+
+That distinction is the point: before `optional` existed, the only way to keep a degrading binding
+out of a hard failure was to leave it unchecked entirely, so a misconfigured `LOGS_KV` was
+indistinguishable from an absent one until the first write.
+
+The security rule in §5a is unchanged: never introduce a conditional that skips security
+enforcement because a binding is absent. Rate limiting is the one ratified fail-open
+(BOUNDARIES §5b), recorded in CODE_REVIEW.md §8.
 
 ### 5c. validateXBinding vs resolveXClient
 

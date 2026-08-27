@@ -1,6 +1,7 @@
 /** @jsxImportSource @y-core/forge/jsx */
 
 import type { NavDefinition } from "@y-core/forge/ui/chrome";
+
 import { routes } from "../routes";
 
 /**

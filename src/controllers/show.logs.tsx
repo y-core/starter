@@ -2,6 +2,7 @@ import { CoreIcon } from "@assets";
 import { definePage } from "@y-core/forge/app";
 import { kvLogChannel } from "@y-core/forge/logging";
 import { loadLogViewer } from "@y-core/forge/logging/show";
+
 import type { AppConfig } from "../app/config";
 import { configStore } from "../app/config";
 import type { AppEnv } from "../app/context";
@@ -23,8 +24,7 @@ import { Layout } from "../views/layout";
 export const showLogsController = definePage<AppEnv, AppConfig, Response>({
   loader: (c, config) =>
     loadLogViewer(c, config, {
-      // biome-ignore lint/style/noNonNullAssertion: `access` denies before the channel is built, and the route is debug-only
-      channel: (cc) => kvLogChannel(cc.env.LOGS_KV!),
+      channel: (cc) => kvLogChannel(cc.env.LOGS_KV),
       // Logs carry request paths, request ids and error messages. `access` runs before the channel
       // is touched, so a denial never reads KV. Production (`LOG_LEVEL` unset) gets a 403.
       access: (cc) => configStore.get(cc.env).site.debug,

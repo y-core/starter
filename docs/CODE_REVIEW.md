@@ -41,7 +41,7 @@ description: "This app's layer-compliance and forge-consumption checklists, its 
 
 ## 1. Review Workflow
 
-See [`CODE_REVIEW.md`](../governance/CODE_REVIEW.md) §1 for the review workflow, the green-baseline
+See `CODE_REVIEW.md` §1 for the review workflow, the green-baseline
 requirement, and the finding format. The highest-yield step for this app is reading the route map
 and the controller binding before judging any guard.
 
@@ -92,7 +92,7 @@ Example correct handler shape (fragment/action handler):
 
 - [ ] Route entries in `src/routes.ts`; handler bindings in `src/router.tsx` — never inline in `worker.ts`
 - [ ] POST routes include `csrfVerifyGuard` in their middleware array in `router.tsx`
-- [ ] HTMX-only POST routes include an HTMX origin/header guard (e.g., `contactGuard`)
+- [ ] HTMX-only POST routes include the transport guards (`requireFormContentType()`, `htmxOnlyGuard`, `originGuard`)
 - [ ] Auth-protected routes include auth middleware or a `// TODO(auth)` comment
 - [ ] Guard ordering: origin/HTMX check → rate limit → CSRF verify (see §4b)
 
@@ -108,12 +108,12 @@ check what `@y-core/forge` exports before writing new utility code.
 | Functionality | Forge export |
 |---|---|
 | CSRF token generation and verification | `csrfProtection` from `@y-core/forge/form` |
-| Security headers (CSP, HSTS, etc.) | `makeSecurityHeaders` from `@y-core/forge/security` |
+| Security headers (CSP, HSTS, etc.) | `createSecurityHeaders` from `@y-core/forge/security` |
 | HTML entity escaping | `escapeHtml` from `@y-core/forge/http` |
 | Fragment success/error responses | `renderError`, `renderSuccess` from `@y-core/forge/http` |
 | Validation schema and parse | `v` from `@y-core/forge/validation` |
 | Form field reading | `readFields` from `@y-core/forge/form` |
-| Structured logging | `kvLogChannel`, `createLogger` from `@y-core/forge/logging`; log viewer from `@y-core/forge/logging/http` |
+| Structured logging | `kvLogChannel`, `createLogger` from `@y-core/forge/logging`; log viewer from `@y-core/forge/logging/show` |
 | Theme toggle script | `FOUC_SCRIPT`, `mountTheme`, `DARK_CLASS` from `@y-core/forge/ui/client` |
 
 If a handler manually builds a `Content-Type: text/html` response instead of using
@@ -149,11 +149,13 @@ Security findings are Critical or Major by default. See §6 for calibration.
 
 ### 4b. Contact Route Guards and Ordering
 
-The contact form route requires three guards in strict order:
+The contact form route requires five guards in strict order:
 
-    middleware: [contactGuard, rateLimitGuard, csrfVerifyGuard]
+    middleware: [requireFormContentType(), htmxOnlyGuard, originGuard, rateLimitGuard, csrfVerifyGuard]
 
-- `contactGuard` — checks `HX-Request: true` and validates the `Origin` header
+- `requireFormContentType()` — 415 unless the media type is a form encoding
+- `htmxOnlyGuard` — checks `HX-Request: true` via `isHxRequest`
+- `originGuard` — `originProtection`: Fetch-Metadata plus the `Origin`/`Referer` allowlist
 - `rateLimitGuard` — enforces 5 req/60s per IP (skipped if binding absent)
 - `csrfVerifyGuard` — validates the `__csrf` token from the form body
 
@@ -231,14 +233,14 @@ Every guarded POST route needs both a passing and a failing security test:
 
 ## 6. Severity Calibration
 
-See [`CODE_REVIEW.md`](../governance/CODE_REVIEW.md) §4 for severity calibration and the deliberate
+See `CODE_REVIEW.md` §4 for severity calibration and the deliberate
 asymmetry that makes excess prose Major and its absence Minor.
 
 ---
 
 ## 7. Verification Protocol
 
-See [`CODE_REVIEW.md`](../governance/CODE_REVIEW.md) §5 for the verification protocol every finding
+See `CODE_REVIEW.md` §5 for the verification protocol every finding
 must survive before it is reported.
 
 ---
@@ -249,11 +251,10 @@ The following patterns appear unusual but are intentional. Do not report them.
 
 | Pattern | Why valid |
 |---|---|
-| `required: false` in `rateLimitGuard` | Intentional graceful degradation — binding absent in `bun test` |
-| `renderPage(node, init?)` called directly in `view` without a context arg | `renderPage` from `@y-core/forge/render` is a standalone function — no middleware install required |
-| `// TODO(auth)` comment on `/admin/logs` | Known gap, documented, pending auth integration |
+| `required: false` in `rateLimitGuard` | Ratified fail-open under `BOUNDARIES.md` §5b and `BOUNDARIES.md` §5d — rate limiting is availability, not authorisation; `RATE_LIMITER` is declared in `wrangler.jsonc`, so the fallback fires only in `bun test`. Recorded in MIDDLEWARE_AND_CONTEXT.md §3, WEB_DESIGN.md §3b and DATA_STORAGE.md §5 |
+| `renderPage(node, init?)` called directly in `view` without a context arg | `renderPage` from `@y-core/forge/jsx` is a standalone function — no middleware install required |
+| `/showcase/logs` carrying no auth middleware | Gated by `loadLogViewer`'s `access` predicate on `site.debug`; production answers 403 |
 | `MINIMUM_ENV` without `LOGS_KV` in tests | KV logging gracefully degrades when binding is absent |
 | `mergeSecurityHeaders` in `worker.dev.ts` | Intentional dev/prod CSP split — live-reload hash must not leak to prod |
 | `rawHtml()` for `FOUC_SCRIPT` | Intentional synchronous inline script required for FOUC prevention |
-| `tsconfig.json` paths alias for `@y-core/forge/*` | Zed editor workaround — governs `tsgo` resolution, not runtime |
 | `"types": []` in tsconfig | Global scope uses no `@types/*`; Workers types come from generated `.types/` |

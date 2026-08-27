@@ -6,7 +6,7 @@ description: "The minimum environment fixture and its per-field requirements, th
 # Handler Testing
 
 > The app.request(path, init, env) test pattern, MINIMUM_ENV fixture, assertion rules.
-> Complements [`PRODUCTION_TS_RULES.md`](../governance/PRODUCTION_TS_RULES.md) §6 (HTML entity rule).
+> Complements `CODE_RULES.md` §6 (HTML entity rule).
 
 ---
 
@@ -19,7 +19,7 @@ description: "The minimum environment fixture and its per-field requirements, th
 - §2 MINIMUM_ENV: required bindings + config fixture
 - §2a 404 Test Variant
 - §2b Extending MINIMUM_ENV
-- §2c Shared Setup via tests/setup.ts
+- §2c Shared Setup via tests/setup.ts, and forge's testing helpers
 - §3 Assertion rules: toBe static, toContain dynamic, entity encoding
 - §4 POST/action tests: CSRF minting, required headers
 - §4a Minting a CSRF Token
@@ -47,13 +47,13 @@ so bindings (KV, secrets, site key) are always under test control.
 
 ### 1a. Basic GET Test
 
-See [`TESTING.md`](../governance/TESTING.md) §1 for the app-request pattern and why the composition
+See `TESTING.md` §1 for the app-request pattern and why the composition
 root is the subject. The environment it is handed is §1c below.
 
 ### 1b. Tests Live in tests/
 
 Tests live in `tests/`, not beside their source — the placement decision
-[`TESTING.md`](../governance/TESTING.md) §2a requires be stated once and held uniformly. Import paths
+`TESTING.md` §2a requires be stated once and held uniformly. Import paths
 are relative to `tests/` accordingly.
 
 ### 1c. MINIMUM_ENV Requirements
@@ -64,7 +64,7 @@ Each field is required unless noted. Missing bindings cause the middleware chain
 | Key | Requirement |
 |---|---|
 | `ASSETS` | `{ fetch: async () => Response }` — controls static-asset passthrough |
-| `BASE_URL` | Any `https://` URL; used for origin validation in guards |
+| `SITE_ORIGIN` | Optional — any `https://` URL (or `http://localhost`); used for origin validation in guards. A fixture that omits it falls through to the `SITE_ORIGIN` literal in `src/app/config.ts`, so the guards then allowlist the production origin rather than the fixture's. Set it whenever a test asserts on an origin |
 | `CSRF_SECRET` | 64 hex chars (32 bytes); must be a valid key for `importCsrfKey` |
 | `EMAIL_API_KEY` | Any string; email delivery is stubbed via `globalThis.fetch` |
 | `TURNSTILE_SECRET_KEY` / `TURNSTILE_SITE_KEY` | Any strings |
@@ -103,23 +103,37 @@ Spread `MINIMUM_ENV` and override only the keys relevant to the test. Never muta
 
     const envStrict = {
       ...MINIMUM_ENV,
-      BASE_URL: "https://strict-origin.example.com",
+      SITE_ORIGIN: "https://strict-origin.example.com",
     }
 
-### 2c. Shared Setup via tests/setup.ts
+### 2c. Shared Setup via tests/setup.ts, and forge's testing helpers
 
-Export `MINIMUM_ENV` and any factory helpers from `tests/setup.ts`. Import them in each test file.
-Do not duplicate the fixture inline — if `CSRF_SECRET` needs rotation it should change in one place.
+**Reach for `@y-core/forge/testing` before writing a helper.** It ships `createTestContext`,
+`mockExecutionContext`, `nullLogger`, `buildRequest`, `mintTestCsrfToken`, `fakeKV`, `fakeR2`,
+`fakeD1` and `fakeAssetsFetcher`. A hand-rolled copy in the repository whose whole job is to prove
+forge sufficient is the clearest FORGE_CONSUMPTION §1 violation there is.
 
-    // tests/setup.ts
-    export const MINIMUM_ENV = { ... }
-    export const MOCK_ASSETS_404 = { ... }
+    import { createTestContext, fakeKV, mintTestCsrfToken, nullLogger } from "@y-core/forge/testing"
+
+    const c = createTestContext<AppEnv, AppConfig>(request, { env, config })
+
+`createTestContext` takes an options object — `env`, `config`, `executionCtx`, `logger` — and every
+one has a default, so a bare `createTestContext(request)` is valid.
+
+`tests/setup.ts` is `bunfig.toml`'s `preload`, so it holds only what is genuinely local and
+side-effecting: the `urlpattern-polyfill` import and the structured-logger console suppression.
+Nothing imports it. `MINIMUM_ENV` lives beside the tests that use it — if `CSRF_SECRET` needs
+rotation it should still change in one place per file, not be re-spelled per case.
+
+**`fakeKV` is a working namespace, not an empty one.** The request logger's own entry lands in it,
+so a viewer test asserting the empty state must build a fresh `fakeKV()` per request or its result
+depends on test order.
 
 ---
 
 ## 3. Assertion Rules
 
-See [`TESTING.md`](../governance/TESTING.md) §3 for the exact-match rule, the entity encoding map,
+See `TESTING.md` §3 for the exact-match rule, the entity encoding map,
 the normalise-then-assert-exactly treatment of per-request values, and the requirement that
 headers and statuses be asserted exactly.
 
@@ -135,12 +149,13 @@ POST routes require three ingredients: a valid CSRF token, correct headers (`HX-
 Import the forge helpers directly. Do not hard-code token strings — they are time-based HMAC values
 and will expire.
 
-    import { createCsrfToken, importCsrfKey } from "@y-core/forge/form"
+    import { mintTestCsrfToken } from "@y-core/forge/testing"
 
-    const key = await importCsrfKey(MINIMUM_ENV.CSRF_SECRET)
-    const csrfToken = await createCsrfToken(key)
+    const csrfToken = await mintTestCsrfToken(MINIMUM_ENV.CSRF_SECRET, "/api/contact")
 
-Call `importCsrfKey` once per `describe` block using `beforeAll` to avoid redundant key imports.
+`mintTestCsrfToken` does the `importCsrfKey` + `createCsrfToken` pair in one call. Tokens are
+path-bound, so the path must match the route under test. Call it once per `describe` block in
+`beforeAll` to avoid redundant key imports.
 
 ### 4b. Building the POST Request
 
@@ -300,5 +315,5 @@ Write explicit tests for each rejection path so regressions are caught before de
 
 ### 6e. Rule: No 200 on Guard Failure
 
-See [`TESTING.md`](../governance/TESTING.md) §5d: an unexpected 200 from a guarded route is a defect
+See `TESTING.md` §5d: an unexpected 200 from a guarded route is a defect
 in the guard, never an assertion to adjust.

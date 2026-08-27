@@ -5,13 +5,15 @@
  * The four fail-closed POST-route cases from r-test.md do not apply here.
  */
 import { describe, expect, it } from "bun:test";
+
 import { showcasePaths } from "@y-core/forge/ui/show";
+
 import { routes } from "../src/routes";
 import app from "../src/worker";
 
 const MINIMUM_ENV = {
   ASSETS: { fetch: async () => new Response("", { status: 200 }) },
-  BASE_URL: "https://example.com",
+  SITE_ORIGIN: "https://example.com",
   CSRF_SECRET: "a".repeat(64),
   EMAIL_API_KEY: "test-api-key",
   TURNSTILE_SECRET_KEY: "test-turnstile-secret",
@@ -116,7 +118,7 @@ describe("GET /showcase/ui", () => {
     const res = await app.request("/showcase/ui/runtime", {}, MINIMUM_ENV);
     const text = await res.text();
     expect(text).toContain('data-scope="show-filter"');
-    expect(text).toContain("data-state=");
+    expect(text).toContain("data-island-state=");
     expect(text).toContain('data-on-input="filter"');
     expect(text).toContain('data-ref="count"');
     expect(text).toContain("data-filter-item");

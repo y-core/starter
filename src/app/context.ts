@@ -1,17 +1,24 @@
 import type { AppContext as ForgeAppContext } from "@y-core/forge/context";
+import { contextVar } from "@y-core/forge/context";
 import { mintCsrf } from "@y-core/forge/form";
 import { getNonce } from "@y-core/forge/security";
+
 import type { AppConfig } from "./config";
 
 export interface RenderContext {
-  baseUrl?: string;
+  baseUrl?: string | undefined;
   csrfToken: string;
   nonce: string;
-  turnstileSiteKey?: string;
+  turnstileSiteKey?: string | undefined;
 }
 
 export type AppEnv = Env;
 export type AppContext = ForgeAppContext<AppEnv, Record<string, string>, AppConfig>;
+
+/** The hostname Turnstile's siteverify answer is held against, when a development entry point has
+ *  licensed one. Only `turnstileHostname` in `middleware.ts` sets it, and only `worker.dev.ts`
+ *  registers that — so on the production entry it is unset for every request. */
+export const turnstileHostnameCtx = contextVar<string>("turnstileHostname");
 
 /** Materializes per-request values into a typed `ctx`. Config is passed explicitly (forge idiom);
  *  the context is used only to mint the CSRF token and read the nonce, so it is config-agnostic. */

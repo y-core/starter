@@ -1,6 +1,7 @@
 import "@y-core/forge/jsx/register";
 import { applyAssets, createApp } from "@y-core/forge/app";
 import type { SecurityHeadersOptions } from "@y-core/forge/security";
+
 import { configStore, securityHeaders } from "./app/config";
 import type { AppEnv } from "./app/context";
 import { registerMiddleware } from "./app/middleware";

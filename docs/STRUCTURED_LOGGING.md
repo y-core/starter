@@ -12,7 +12,7 @@ description: "The channels this app installs, KV log persistence, request-id cor
 
 ## 0. Quick Reference
 
-- §1 Channels: `consoleChannel` + `kvLogChannel` (LOGS_KV binding)
+- §1 Channel Configuration: `consoleChannel` + `kvLogChannel` (LOGS_KV binding)
 - §1a Dual Channel Setup
 - §1b LOGS_KV Wrangler Binding
 - §1c AppEnv Typing
@@ -23,9 +23,9 @@ description: "The channels this app installs, KV log persistence, request-id cor
 - §3 Log levels: INFO / WARN / ERROR mapped by HTTP status range
 - §3a Status-to-Level Mapping
 - §3b Structured Fields Per Record
-- §4 Admin log viewer: `/admin/logs` route, `adminLogsController` with `readLogViewer`/`LogViewerContent` from forge
-- §4a /admin/logs Route Wiring
-- §4b TODO(auth) — Authentication Required
+- §4 Admin Log Viewer: `/showcase/logs` route, `showLogsController` with `loadLogViewer` from forge
+- §4a /showcase/logs Route Wiring
+- §4b Access Control — debug-gated, fail-closed
 - §5 No-PII rule: log only method, path, status, duration, requestId
 
 ---
@@ -59,7 +59,7 @@ Declare the namespace in `wrangler.jsonc`:
     ]
 
 For local dev Wrangler auto-creates an in-memory KV namespace when the binding is declared.
-The `adminLogsController` reads from this same namespace via `readLogViewer`, so `/admin/logs` works locally without
+The `showLogsController` reads from this same namespace via `loadLogViewer`, so `/showcase/logs` works locally without
 extra setup.
 
 ### 1c. AppEnv Typing
@@ -137,49 +137,50 @@ Additional fields from `bindings` are merged at the top level.
 
 ## 4. Admin Log Viewer
 
-### 4a. /admin/logs Route Wiring
+### 4a. /showcase/logs Route Wiring
 
     // src/routes.ts
-    import { route } from "@y-core/forge/router"
-    adminLogs: { method: "GET", pattern: "/admin/logs" }
+    import { get, route } from "@y-core/forge/router"
+    showcase: { logs: get("/showcase/logs"), ... }
 
-    // src/controllers/admin-logs.tsx
-    import { LogViewerContent, readLogViewer } from "@y-core/forge/logging/http"
+    // src/controllers/show.logs.tsx
+    import { loadLogViewer } from "@y-core/forge/logging/show"
     import { definePage } from "@y-core/forge/app"
-    import { renderPage } from "@y-core/forge/render"
     import { CoreIcon } from "@assets"
 
-    export const adminLogsController = definePage<AppEnv, AppConfig, LogViewerLoaderData>({
-      loader: (c) => readLogViewer(c, { kv: (cc) => cc.env.LOGS_KV!, basePath: routes.adminLogs.href() }),
-      view: async (c, config, state) => {
-        const ctx = await renderContext(c, config)
-        return renderPage(
-          <Layout ctx={ctx}><LogViewerContent data={state.data} icon={CoreIcon} /></Layout>
-        )
-      },
+    export const showLogsController = definePage<AppEnv, AppConfig, Response>({
+      loader: (c, config) =>
+        loadLogViewer(c, config, {
+          channel: (cc) => kvLogChannel(cc.env.LOGS_KV),
+          access: (cc) => configStore.get(cc.env).site.debug,
+          icon: CoreIcon,
+          context: renderContext,
+          layout: Layout,
+          basePath: routes.showcase.logs.href(),
+        }),
+      view: (_c, _cfg, state) => state.data,
     })
 
-`readLogViewer` queries LOGS_KV with optional `?level=`, `?limit=`, and `?cursor=` query
-parameters for filter and cursor-based pagination. `LogViewerContent` from forge renders the
-log viewer UI. Both are imported from `@y-core/forge/logging/http`. There is no separate
-`logsView` component in the app.
+`loadLogViewer` queries LOGS_KV with optional `?q=`, `?level=`, `?limit=` and `?cursor=` query
+parameters for filter and cursor-based pagination. It returns a fully rendered `Response` for
+every path — the full page, the `<tbody>` HTMX partial, the `<tr>` cursor page and the detail
+cell — because the record-rendering components are internal. A loader returning a `Response`
+short-circuits rendering, so the `view` is a pass-through and there is no separate view component
+in the app. `context` and `layout` hand the viewer this app's shell.
 
-### 4b. TODO(auth) — Authentication Required
+### 4b. Access Control — debug-gated, fail-closed
 
-**The `/admin/logs` route currently has no authentication guard.** It must not be exposed
-in production without one. Add an auth middleware to the action binding in `router.tsx`:
+`/showcase/logs` carries no auth guard and needs none in this app: `loadLogViewer`'s `access`
+predicate reads `configStore.get(cc.env).site.debug`, which is true only when `LOG_LEVEL=DEBUG`.
+Production leaves `LOG_LEVEL` unset, so the route answers 403. `access` runs before the channel is
+built, so a denial never reads KV — logs carry request paths, request ids and error messages.
 
-    adminLogs: {
-      middleware: [requireAdminSession],
-      handler: adminLogsController,
-    }
-
-Track this in the project backlog. Until auth is added, consider blocking the route at
-the Cloudflare Access layer or omitting it from the production bundle entirely.
+Adding sessions to this app would make an auth middleware the better gate; until then the config
+flag is the whole control, and it is fail-closed by default rather than by remembering to set it.
 
 ---
 
 ## 5. No-PII Rule
 
-See [`BOUNDARIES.md`](../governance/BOUNDARIES.md) §4 for the no-PII rule, the prohibited field
+See `BOUNDARIES.md` §4 for the no-PII rule, the prohibited field
 classes, and structured fields over string interpolation.

@@ -1,15 +1,13 @@
 import { defineAction } from "@y-core/forge/app";
-import type { Middleware } from "@y-core/forge/context";
-import { getAppContext } from "@y-core/forge/context";
 import { fragmentResponse, renderError, renderSuccess } from "@y-core/forge/http";
 import { requestLog } from "@y-core/forge/logging";
 import { createMiddleware } from "@y-core/forge/router";
-import { verifyOrigin } from "@y-core/forge/security";
+import { requireFormContentType } from "@y-core/forge/security";
 import { formMultilineText, formText, strictObject, v } from "@y-core/forge/validation";
+
 import type { AppConfig } from "../../app/config";
-import { configStore } from "../../app/config";
-import type { AppEnv } from "../../app/context";
-import { csrfVerifyGuard, rateLimitGuard } from "../../app/middleware";
+import { type AppEnv, turnstileHostnameCtx } from "../../app/context";
+import { csrfVerifyGuard, htmxOnlyGuard, originGuard, rateLimitGuard } from "../../app/middleware";
 import { sendContactEmail } from "../../services/email";
 
 const SUCCESS_MESSAGE = "Thanks. We'll review your note and get back to you soon.";
@@ -73,19 +71,6 @@ export const ContactSchema = strictObject({
 
 export type ContactSubmission = v.InferOutput<typeof ContactSchema>;
 
-/** Transport guards: origin, HTMX-only, content type. These read the request envelope and never the
- *  body, which is why they stay in middleware instead of moving into the action pipeline. */
-const contactGuard: Middleware = async (context, next) => {
-  const c = getAppContext<AppEnv, Record<string, string>, AppConfig>(context);
-  if (c.method !== "POST") return new Response("Forbidden", { status: 403 });
-  const { allowedOrigins } = configStore.get(c.env).site.url;
-  if (!verifyOrigin(c.request, allowedOrigins).ok) return new Response("Forbidden", { status: 403 });
-  if (c.request.headers.get("HX-Request") !== "true") return new Response("Forbidden", { status: 403 });
-  const ct = c.request.headers.get("content-type") ?? "";
-  if (!ct.includes("application/x-www-form-urlencoded")) return new Response("Unsupported Media Type", { status: 415 });
-  return next();
-};
-
 /**
  * The pipeline owns the body read, the decoy check, Turnstile verification, the drop of every
  * consumed field (`_csrf` via `csrfFieldCtx`, the decoy and `cf-turnstile-response` because they are
@@ -96,7 +81,12 @@ export const contactAction = defineAction<typeof ContactSchema, AppEnv, AppConfi
   honeypot: CONTACT_DECOY,
   turnstile: {
     secretKey: (_c, config) => config.services.turnstile.secretKey,
-    verify: (c, config) => ({ expectedHostname: config.site.url.hostname, remoteIp: c.request.headers.get("CF-Connecting-IP") ?? undefined }),
+    // The site origin's hostname is the only comparison production ever makes: nothing sets
+    // `turnstileHostnameCtx` there, because only `worker.dev.ts` registers the middleware that does.
+    verify: (c, config) => ({
+      expectedHostname: turnstileHostnameCtx.getOptional(c) ?? config.site.url.hostname,
+      remoteIp: c.request.headers.get("CF-Connecting-IP") ?? undefined,
+    }),
   },
   handle: async (data, c, config) => {
     const log = requestLog.get(c);
@@ -110,4 +100,10 @@ export const contactAction = defineAction<typeof ContactSchema, AppEnv, AppConfi
   },
 });
 
-export const contactController = { middleware: createMiddleware(contactGuard, rateLimitGuard, csrfVerifyGuard), handler: contactAction };
+/** Transport guards in BOUNDARIES §2c order — request shape, then origin, then rate limit, then
+ *  CSRF. Every one reads the request envelope and never the body, which is why they stay in
+ *  middleware instead of moving into the action pipeline. */
+export const contactController = {
+  middleware: createMiddleware(requireFormContentType(), htmxOnlyGuard, originGuard, rateLimitGuard, csrfVerifyGuard),
+  handler: contactAction,
+};

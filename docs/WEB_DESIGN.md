@@ -11,7 +11,7 @@ description: "This app's Workers bindings and their limits, the asset build outp
 
 ## 0. Quick Reference
 
-- §1 Workers runtime: V8 isolate, single-request, no shared state
+- §1 Cloudflare Workers Runtime Model: V8 isolate, single-request, no shared state
 - §2 ctx.waitUntil: fire-and-forget after response
 - §3 Rate limiting: Workers binding, 5/60s, required: false
 - §3a Workers Rate Limiter Binding
@@ -20,7 +20,7 @@ description: "This app's Workers bindings and their limits, the asset build outp
 - §4 Deploy safety: secrets, .dev.vars, never commit
 - §5 Static assets: public/ directory, run_worker_first
 - §5a public/ Directory
-- §5b run_worker_first: false
+- §5b run_worker_first — the asset-root exclusion list
 - §5c Asset Fingerprinting
 - §5d No Dynamic Asset Serving in Worker
 - §6 Workers Bindings Reference
@@ -31,14 +31,14 @@ description: "This app's Workers bindings and their limits, the asset build outp
 
 ## 1. Cloudflare Workers Runtime Model
 
-See [`WORKERS_PLATFORM.md`](../governance/WORKERS_PLATFORM.md) §1 for the isolate model, what module
+See `WORKERS_PLATFORM.md` §1 for the isolate model, what module
 scope may hold, and why a per-request cache is module state wearing a performance argument.
 
 ---
 
 ## 2. ctx.waitUntil
 
-See [`WORKERS_PLATFORM.md`](../governance/WORKERS_PLATFORM.md) §2 for post-response work, the rule that
+See `WORKERS_PLATFORM.md` §2 for post-response work, the rule that
 an error inside it never reaches the response, and the requirement that the promise cover every
 piece of work its function started.
 
@@ -63,19 +63,19 @@ Exceeding the limit returns a `429 Too Many Requests` response via `rateLimitGua
 
 ### 3b. required: false — Graceful Degradation
 
-See [`BOUNDARIES.md`](../governance/BOUNDARIES.md) §5b for why graceful degradation is scoped to rate
-limiting alone, and [`CODE_REVIEW.md`](../governance/CODE_REVIEW.md) §6 for its place in the
+See `BOUNDARIES.md` §5b for why graceful degradation is scoped to rate
+limiting alone, and `CODE_REVIEW.md` §6 for its place in the
 do-not-flag table.
 
 ### 3c. Rate Limit Key Selection
 
-See [`WORKERS_PLATFORM.md`](../governance/WORKERS_PLATFORM.md) §3c for key selection, and
-[`BOUNDARIES.md`](../governance/BOUNDARIES.md) §3c for why the connecting-IP header is trustworthy only
+See `WORKERS_PLATFORM.md` §3c for key selection, and
+`BOUNDARIES.md` §3c for why the connecting-IP header is trustworthy only
 behind the platform edge.
 
 ## 4. Deploy Safety
 
-See [`WORKERS_PLATFORM.md`](../governance/WORKERS_PLATFORM.md) §4 for secret provisioning, the
+See `WORKERS_PLATFORM.md` §4 for secret provisioning, the
 gitignored local variables file, the pre-deploy gate, and environment parity. The variables this
 app requires are in [`CONFIGURATION_AND_SECRETS.md`](./CONFIGURATION_AND_SECRETS.md).
 
@@ -95,18 +95,26 @@ Build outputs:
 | `src/assets/tailwind.css` | `public/assets/styles.css` |
 | `src/client/main.ts` | `public/assets/js/main.js` |
 
-### 5b. run_worker_first: false
+### 5b. run_worker_first — the asset-root exclusion list
 
 In `wrangler.jsonc`:
 
     "assets": {
       "directory": "./public",
-      "run_worker_first": false
+      "run_worker_first": [
+        "/*",
+        "!/favicon.ico", "!/favicon.svg", "!/apple-touch-icon.png",
+        "!/icon-192.png", "!/icon-512.png", "!/site.webmanifest"
+      ]
     }
 
-`run_worker_first: false` means Cloudflare serves static files directly, bypassing the
-Worker for asset requests. This is faster and avoids wasting CPU time on `fetch` events
-for files that never need dynamic logic.
+The six `!` rules name exactly the files `icons.outputs` writes to the asset root. Cloudflare
+serves those directly, bypassing the Worker — faster, and no CPU spent on a `fetch` event for a
+file that never needs dynamic logic.
+
+Every other path, `/assets/*` included, runs the Worker first. The `validate-asset-root` gate row
+diffs the two halves, so a new root-level output added to `config/assets.ts` without its `!` rule
+here is caught in CI rather than in production. See CONFIGURATION_AND_SECRETS.md §4a.
 
 ### 5c. Asset Fingerprinting
 

@@ -8,7 +8,7 @@ description: "The createWorker composition root, this app's layer directories, t
 > Authoritative source for forge-starter's layer structure, composition root,
 > factory pattern, and feature development sequence.
 >
-> Complements [`PRODUCTION_TS_RULES.md`](../governance/PRODUCTION_TS_RULES.md) (coding rules),
+> Complements `CODE_RULES.md` (coding rules),
 > [MIDDLEWARE_AND_CONTEXT.md](./MIDDLEWARE_AND_CONTEXT.md) (middleware ordering),
 > [ROUTING.md](./ROUTING.md) (route definitions).
 
@@ -104,7 +104,7 @@ Each layer may only import from the layers listed:
 
 | Layer | May import from |
 |---|---|
-| `controllers/` | `services/`, `model/`, `app/`, `views/`, `routes`, `@y-core/forge/render` |
+| `controllers/` | `services/`, `model/`, `app/`, `views/`, `routes`, `@y-core/forge/jsx` |
 | `services/` | `model/`, `app/config` |
 | `views/` | `model/`, `app/context`, `views/layout` |
 | `app/middleware.ts` | `app/config`, forge (`security`, `form`, `logging`) |
@@ -173,13 +173,13 @@ accessed through forge's context helpers (`getNonce(c)`, `requestIdCtx.getOption
     // ctx: { baseUrl, csrfToken, nonce, turnstileSiteKey }
 
 `renderContext` materializes per-request values for injection into JSX views:
-- `nonce` — extracted from context (set by `makeSecurityHeaders`)
+- `nonce` — extracted from context (set by `createSecurityHeaders`)
 - `csrfToken` — minted only when `csrfPath` is provided; empty string for pages without forms
 - `baseUrl` — `config.site.url.origin`
 - `turnstileSiteKey` — from `config.services.turnstile.siteKey`
 
 `renderContext` is called inside the controller's `loader`. The controller passes the resulting
-`ctx` as a view prop. `renderPage()` from `@y-core/forge/render` is called in the `view`
+`ctx` as a view prop. `renderPage()` from `@y-core/forge/jsx` is called in the `view`
 function to convert JSX to an `HtmlResponse`. Views receive a typed `RenderContext` prop,
 compose their own `<Layout ctx={ctx}>`, and remain pure rendering functions.
 
@@ -218,12 +218,12 @@ When Wrangler is upgraded and the injected script changes, update only
 
 ## 5. Leverage Forge First Rule
 
-See [`FORGE_CONSUMPTION.md`](../governance/FORGE_CONSUMPTION.md) §1 for the leverage-the-library-first
+See `FORGE_CONSUMPTION.md` §1 for the leverage-the-library-first
 rule, the capability classes forge owns, and the four categories that legitimately stay app code.
 
 ---
 
 ## 6. Feature Development Sequence
 
-See [`APP_ARCHITECTURE.md`](../governance/APP_ARCHITECTURE.md) §5 for the feature development sequence
+See `APP_ARCHITECTURE.md` §5 for the feature development sequence
 and the parse-validate-act-respond handler shape. This app's concrete layer directories are §2.

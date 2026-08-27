@@ -2,12 +2,21 @@
 ################################################################################
 # DEV CONFIG OVERRIDES - Never commit; it contains secrets
 ################################################################################
-BASE_URL=http://localhost:8787
+# `SITE_ORIGIN` is set in exactly three places, one per case, and wrangler.jsonc is none of them:
+# the literal in src/app/config.ts (production, and the fallback when the environment carries none),
+# this file (`bun run dev`), and the `--var` on `dev:browser` in package.json (the browser suite,
+# https://localhost:8787). Production declares nothing and falls through to the literal.
+SITE_ORIGIN=https://starter.devbox.test:8443
+# Proxy-less fallback (`wrangler dev` on a bare machine, browser at https://localhost:8787):
+# set SITE_ORIGIN=https://localhost:8787 instead. The cases are mutually exclusive and each has one
+# browser origin, so SITE_ORIGIN always names the origin the browser is actually pointed at — which
+# is what WORKERS_PLATFORM.md §4e asks for. Forge's `extraOrigins` escape hatch is for allowing a
+# second origin at once, and no case here needs one.
 
 # Set to DEBUG to show error details in 500 responses. Omit in prod — defaults to off.
 LOG_LEVEL=DEBUG
 
-# EMAIL_FROM and EMAIL_TO can be defined here to override defaults from src/config/app.ts
+# EMAIL_FROM and EMAIL_TO can be defined here to override defaults from src/app/config.ts
 
 ################################################################################
 # SECRETS - Never place secrets in wrangler.jsonc.
@@ -19,6 +28,11 @@ CSRF_SECRET=your-64-char-hex-csrf-secret
 EMAIL_API_KEY=dev-placeholder-api-key
 
 # Cloudflare Turnstile — create a site at dash.cloudflare.com/turnstile.
-# "Always passes" test site key — overrides prod key for local dev:
+# "Always passes" testing keys — no Cloudflare account needed, only network to siteverify:
 TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
 TURNSTILE_SITE_KEY=1x00000000000000000000AA
+# The testing keys make siteverify answer hostname=example.com whatever origin the widget ran on,
+# so the dev entry point compares against this instead of SITE_ORIGIN's hostname. With real keys
+# from dash.cloudflare.com/turnstile, omit it — siteverify then returns the browser's own hostname.
+# Only src/worker.dev.ts consults it; in production it is inert.
+TURNSTILE_DEV_HOSTNAME=example.com

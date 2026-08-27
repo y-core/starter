@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+
 import { resolveNavHref } from "../src/views/nav";
 
 describe("resolveNavHref", () => {

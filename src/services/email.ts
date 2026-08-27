@@ -1,5 +1,6 @@
 import { escapeHtml } from "@y-core/forge/http";
 import type { Logger } from "@y-core/forge/logging";
+
 import type { EmailConfig } from "../app/config";
 import type { ContactSubmission } from "../controllers/actions/contact";
 

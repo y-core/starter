@@ -11,10 +11,10 @@ description: "The view layer and layout composition, the HTMX interaction patter
 
 ## 0. Quick Reference
 
-- §1 views/ directory: layout, home, not-found (logs rendered by adminLogsController via forge LogViewerContent)
+- §1 views/ directory: layout, home, not-found (logs rendered by showLogsController via forge `loadLogViewer`)
 - §1a layout.tsx — Root Layout
 - §1b home.tsx — Home Page
-- §1c Log Viewer — adminLogsController
+- §1c Log Viewer — showLogsController
 - §1d not-found.tsx — 404 Page
 - §2 Layout: FOUC_SCRIPT, nonce, deferred scripts
 - §2a Nonce on All Inline Scripts
@@ -28,9 +28,9 @@ description: "The view layer and layout composition, the HTMX interaction patter
 - §4b HX-Request Header Enforcement
 - §4c Turnstile Widget
 - §4d Loading Indicators
-- §5 Tailwind v4 @theme tokens: brand-*, system fonts
+- §5 Tailwind v4 Theme Tokens: the palette lives in custom.css; system font stacks
 - §5a @theme Block in tailwind.css
-- §5b System Font Stacks Only
+- §5b System Font Stacks Only — why `--font-display` was a bug
 - §5c Dark Mode via Class Strategy
 - §6 Theme toggle and navbar: FOUC_SCRIPT, theme and navbar resumable scopes, resume()
 - §6a FOUC_SCRIPT Import and Placement
@@ -78,28 +78,42 @@ deferred client scripts. All inline scripts carry `nonce={ctx.nonce}`. `Layout` 
 `loader` and passed to the page view as a prop. The page view owns its `<Layout ctx={ctx}>…</Layout>`
 composition. `Layout` sources the site title from `../model/site.content`; asset paths come from
 the `@assets` alias (`assets.path(…)`). The controller's `view` calls `renderPage(<HomeView ctx={ctx} …/>)`
-from `@y-core/forge/render`. See [MIDDLEWARE_AND_CONTEXT.md](./MIDDLEWARE_AND_CONTEXT.md) §4.
+from `@y-core/forge/jsx`. See [MIDDLEWARE_AND_CONTEXT.md](./MIDDLEWARE_AND_CONTEXT.md) §4.
 
 ### 1b. home.tsx — Home Page
 
 Full home page with hero section and contact form. Receives `RenderContext` for nonce,
 CSRF token, and Turnstile site key. Emits JSON-LD and OG meta in the `<head>` slot.
 
-### 1c. Log Viewer — adminLogsController
+Its chrome comes from forge, not from hand-rolled class strings: the two hero CTAs and the submit
+are `Button` (the anchors under `asChild`, so the box, tone, size, focus ring and the
+`state-busy`/`state-disabled` recipes are the design system's); the contact panel is `Card`, so it
+tracks `--radius` instead of a frozen `rounded-2xl`; the htmx indicator wraps `Spinner`. The pill
+shape is gone — `Button`'s `rounded-field` is the system's answer for a text button, and taking it
+is the point of adopting the system. Page-level layout — the grids, the `space-y-*` columns, the
+section padding — stays raw markup; that is view rendering, which is legitimately app code.
 
-The `/admin/logs` page is rendered by `adminLogsController` in `src/controllers/admin-logs.tsx`.
-It uses `definePage` with a `loader` that calls `readLogViewer` and a `view` that calls
-`renderPage(<Layout ctx={ctx}><LogViewerContent data={state.data} icon={CoreIcon} /></Layout>)`.
-Both `readLogViewer` and `LogViewerContent` are imported from `@y-core/forge/logging/http`.
-There is no `logs.tsx` view component in the app — the log viewer UI comes from forge.
+### 1c. Log Viewer — showLogsController
+
+The `/showcase/logs` page is rendered by `showLogsController` in `src/controllers/show.logs.tsx`.
+It uses `definePage` with a `loader` that calls `loadLogViewer` from `@y-core/forge/logging/show`,
+passing this app's `renderContext` and `Layout` so the viewer renders inside the app's shell. The
+loader returns a `Response`, so the `view` is a pass-through. There is no `logs.tsx` view component
+in the app — the log viewer UI comes from forge.
 
 ### 1d. not-found.tsx — 404 Page
 
-Minimal view: "Page not found" heading with a link back to `/`. The `NotFoundView` in
+Built on `EmptyState` / `.Figure` / `.Description` / `.Actions`, with a `Button asChild` return-home
+link inside `.Actions` — a 404 is the canonical empty state.
+
+The heading is a plain `<h1>`, deliberately **not** `EmptyState.Title`: that renders an `<h3>`, and
+this is the page's only heading, so adopting it would leave the document with no `<h1>` for a screen
+reader to land on. Forge exposes no level prop; until it does, the heading is the app's. The
+`NotFoundView` in
 `src/views/not-found.tsx` owns its `<Layout ctx={ctx}>` composition. Rendered by the
 `notFoundController` in `src/controllers/not-found.tsx`, which marshals `renderContext`
 (no `csrfPath` → empty token) and calls `renderPage(<NotFoundView ctx={ctx} />, { status: 404 })`
-from `@y-core/forge/render`. `notFoundController` is passed to
+from `@y-core/forge/jsx`. `notFoundController` is passed to
 `applyAssets(app, { notFoundView: notFoundController })` in `worker.ts` as the catch-all 404 handler.
 
 ---
@@ -109,7 +123,7 @@ from `@y-core/forge/render`. `notFoundController` is passed to
 ### 2a. Nonce on All Inline Scripts
 
 Every `<script>` tag — whether inline or external — must carry `nonce={ctx.nonce}` to
-satisfy the CSP nonce policy enforced by `makeSecurityHeaders`. Omitting the nonce
+satisfy the CSP nonce policy enforced by `createSecurityHeaders`. Omitting the nonce
 causes the browser to block script execution in production.
 
     {/* Correct */}
@@ -232,11 +246,11 @@ They set the correct `Content-Type: text/html` and status codes expected by HTMX
 ### 4b. HX-Request Header Enforcement
 
 HTMX automatically adds `HX-Request: true` to all requests it initiates. The
-`contactGuard` (or an equivalent guard) checks this header and returns 403
+`htmxOnlyGuard` checks this header and returns 403
 for non-HTMX requests. This prevents direct form POST abuse outside the UI.
 
     {/* router.tsx — guard order matters */}
-    contact: { middleware: contactGuards, handler: handleContact }
+    contact: { middleware: contactGuards, handler: contactAction }
 
 See [MIDDLEWARE_AND_CONTEXT.md](./MIDDLEWARE_AND_CONTEXT.md) §2 for guard ordering rules.
 
@@ -260,13 +274,21 @@ The site key is read from `ctx.turnstileSiteKey`, which is populated by
 
 Add `hx-indicator` and an indicator element for long-running requests:
 
-    <Form hx-post="/api/contact" hx-indicator="#spinner">
-      <span id="spinner" class="htmx-indicator">Sending…</span>
-      ...
+    <Form hx-post="/api/contact" hx-indicator="#form-spinner">
+      <Button data-ref="contact-submit" type="submit" size="lg">
+        Send Message
+        <span id="form-spinner" class="htmx-indicator" aria-hidden="true">
+          <Spinner icon={CoreIcon} size="sm" />
+        </span>
+      </Button>
     </Form>
 
 Tailwind's `htmx-indicator` utility hides the element by default and shows it during
-the request via the `.htmx-request` class added by HTMX.
+the request via the `.htmx-request` class added by HTMX. The wrapping `span` is htmx wiring, not
+styling, so it stays; only the glyph inside it is forge's `Spinner`.
+
+**Not `Button`'s `loading` prop.** That is a server-render-time boolean — it decides once, when the
+page is rendered — whereas the indicator is driven by CSS as htmx adds and removes `.htmx-request`.
 
 ---
 
@@ -274,31 +296,42 @@ the request via the `.htmx-request` class added by HTMX.
 
 ### 5a. @theme Block in tailwind.css
 
-Custom design tokens live in the `@theme {}` block in `src/assets/tailwind.css`. These
-generate CSS custom properties and corresponding Tailwind utility classes.
+**There is no brand-colour scale to declare.** The palette lives in `src/assets/css/custom.css`,
+a forge-shaped scheme generated by forge's customiser: `--gray-1..12` and `--accent-1..12` in one
+`:root`, each step a `light-dark()` pair. `tailwind.css` imports it after `forge.css`, and forge's
+own theme maps those steps onto `--color-background`, `--color-foreground`, `--color-primary` and
+the rest. Do **not** import a named theme file (`theme-gray.css` and friends) — it re-declares the
+twelve gray steps and would clobber the ones `custom.css` deliberately chose.
+
+The app's own `@theme` block is therefore three lines, and every one of them is a token a call site
+would otherwise inline:
 
     @theme {
-      --color-brand-50:  oklch(97% 0.02 210);
-      --color-brand-100: oklch(93% 0.05 210);
-      --color-brand-500: oklch(55% 0.18 210);
-      --color-brand-700: oklch(38% 0.14 210);
-      --color-brand-900: oklch(20% 0.08 210);
-
-      --color-surface:   oklch(99% 0.005 210);
-      --color-muted:     oklch(62% 0.04  210);
+      --font-serif: Georgia, "Times New Roman", serif;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --tracking-eyebrow: 0.3em;
     }
 
-Use brand color classes directly: `bg-brand-500`, `text-brand-900`, `border-brand-100`.
-Dark mode variants: `dark:bg-brand-900 dark:text-brand-50`.
+`--tracking-eyebrow` exists so the hero eyebrow reads `tracking-eyebrow` rather than
+`tracking-[0.3em]`; FORGE_CONSUMPTION §5b forbids inlining a step in markup.
+
+**Reserved namespaces matter.** `cn`'s class-group table reads the *root* of a utility, so a custom
+name must extend a root the table already knows. A custom font size must be `--text-size-hero`, not
+`--text-hero`, or `cn` reads `text-hero` as a colour.
 
 ### 5b. System Font Stacks Only
 
-No external web fonts are loaded — zero layout shift, zero external requests.
+No external web fonts are loaded — zero layout shift, zero external requests. The two faces extend
+Tailwind's own `--font-sans` and `--font-serif` roots, which is what `theme-base.css` documents.
 
-    @theme {
-      --font-sans: ui-sans-serif, system-ui, -apple-system, sans-serif;
-      --font-mono: ui-monospace, Menlo, "Courier New", monospace;
-    }
+**This is not a naming preference.** `cn`'s class-group table gives the root `font` the concern
+`--tw-font-weight`, with exceptions only for `mono | sans | serif`. A `--font-display` token —
+which this app carried until forge 0.1.2 — produces `font-display`, which is not in that set, so
+`cn("font-display …", "font-semibold")` **silently drops the face**. It was harmless only while
+every call site was a raw intrinsic element; the moment one reached a forge component that runs
+`cn` (`Card.Title`, whose base is `leading-none font-semibold …`), the face would disappear.
+
+Views use `font-serif` for display copy and inherit `font-sans` from the `@layer base` body rule.
 
 ### 5c. Dark Mode via Class Strategy
 
@@ -327,7 +360,7 @@ computes styles, eliminating the flash.
 
 ### 6b. Theme Resumable Scope
 
-There is no `mountTheme()` — forge no longer exports one. Importing
+There is no `mountTheme()`; forge exports no such function. Importing
 `@y-core/forge/ui/chrome/client` for its side effect registers an **eager `theme`
 scope**; `resume()` then reconciles the signal with what `FOUC_SCRIPT` already applied
 from `localStorage` and wires the toggle's `cycleTheme` action.

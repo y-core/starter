@@ -23,13 +23,31 @@ specifies — no added features, no adjacent refactors, no unrequested improveme
 Implement `cc-plan`'s plan faithfully. Every file change is deliberate and traceable to a plan
 step.
 
+## Scope Is the Plan
+
+**The plan's scope is the deliverable, not a starting point.** Implement every step it specifies,
+at the size it specifies, and stop there.
+
+- **Do not widen it.** An adjacent bug, a nearby name that could be better, an abstraction that
+  would generalise the change — note it in your return; do not build it. An unrequested
+  improvement is the most expensive kind of change to review.
+- **Do not narrow it either.** A step you did not do is stated explicitly, with why. Silently
+  dropping one leaves the reader believing work happened that did not
+  (`PLAIN_LANGUAGE.md` §11).
+- **Make the routine call; escalate the material one.** Where the plan is silent and the choice
+  is cheap to reverse, choose it, say what you chose, and continue. Where it is a placement or a
+  public signature, stop and ask `cc-plan` (see _When to Stop_).
+
 ## First Steps (always)
 
 1. Follow the **Coding Ruleset** below.
-2. Identify which layer(s) your change touches, then read the governing doc — locate it via the
-   **`CLAUDE.md` Guide Index**, then use that doc's `## 0. Quick Reference` to jump to the
-   section you need. The index has two tables: `governance/` for the portable rule,
-   `implementation/` for this application's routes, config, bindings, and design system.
+2. **Never infer a rule mid-implementation — search for it.** `knowledge_search` with the
+   question in plain words, then `knowledge_read` on the chunk id (`AGENT_GUIDE.md §1`).
+   `canon` carries the portable rule, `local` this application's routes, config, bindings and
+   design system. **An empty result is an answer** — nothing governs it, so follow the
+   surrounding code and say so; a near miss is not a rule. Cite the chunk id when a rule
+   decides your change. Where no warden MCP is configured, the same index is `warden search`
+   and `warden outline <path>` from a terminal.
 3. Read every file in full before modifying it. Understand the existing pattern before adding to
    it.
 
@@ -43,32 +61,32 @@ That has two consequences worth stating plainly:
 
 - **Every library capability comes from its published subpath.** Never import a wrapped
   dependency directly and never reach into `node_modules`
-  (`governance/FORGE_CONSUMPTION.md` §2).
+  (`FORGE_CONSUMPTION.md` §2).
 - **There *is* an upstream.** A missing capability that a second application would need is a
-  library change, not a local helper (`governance/FORGE_CONSUMPTION.md` §3a).
+  library change, not a local helper (`FORGE_CONSUMPTION.md` §3a).
 
 ## Critical Boundaries
 
 **Layer discipline** — every module belongs to one layer, and the layer decides what it may
 import. A controller never imports another controller; a service never imports a controller or a
 view; a view never fetches, reads config, or decides a business rule
-(`governance/APP_ARCHITECTURE.md` §2).
+(`APP_ARCHITECTURE.md` §2).
 
 **Guards in the middleware list** — a route's guards are declared in its middleware list, never
-inline in the handler, and in the order `governance/BOUNDARIES.md` §2c sets. An inline guard is
+inline in the handler, and in the order `BOUNDARIES.md` §2c sets. An inline guard is
 invisible to the route-map audit that is the only thing a reviewer can rely on.
 
 **Validation at the boundary** — services receive typed domain objects. A service parameter
-typed as raw form data is a defect on its face (`governance/BOUNDARIES.md` §3a).
+typed as raw form data is a defect on its face (`BOUNDARIES.md` §3a).
 
 **Config, not raw environment** — read configured scalars through the validated config accessor,
-never off the environment directly (`governance/APP_ARCHITECTURE.md` §3a). Binding *objects* are
+never off the environment directly (`APP_ARCHITECTURE.md` §3a). Binding _objects_ are
 the exception, and they are resolved rather than validated.
 
 **No module-level mutable state** — the isolate is recycled, so module scope is shared across
-requests (`governance/WORKERS_PLATFORM.md` §1a).
+requests (`WORKERS_PLATFORM.md` §1a).
 
-**The five boundaries** — `governance/BOUNDARIES.md` is binding on every edit: never import
+**The five boundaries** — `BOUNDARIES.md` is binding on every edit: never import
 browser-only code from a Worker-reachable file, never skip a guard whose dependency is missing,
 never swallow a verification error, never let PII reach a log record.
 
@@ -78,7 +96,7 @@ never swallow a verification error, never let PII reach a log record.
 
 - Read the target file in full — patterns, imports, style.
 - **Check the shared library before writing a cross-cutting helper**
-  (`governance/FORGE_CONSUMPTION.md` §1a).
+  (`FORGE_CONSUMPTION.md` §1a).
 - Find every caller of any function whose signature you are changing, and update all of them.
 - Confirm no equivalent already exists before adding a symbol.
 
@@ -91,7 +109,7 @@ never swallow a verification error, never let PII reach a log record.
 
 ## The Comment Budget — Binding
 
-**`governance/PRODUCTION_TS_RULES.md` §5 is binding on every line you write. It is a ceiling, not
+**`CODE_RULES.md` §5 is binding on every line you write. It is a ceiling, not
 a floor.** Read §5a before your first edit in any session; it is the entire permitted budget and
 nothing outside it is a judgement call.
 
@@ -108,16 +126,19 @@ code as readily as in new. This is not scope creep and is not covered by the no-
 rule; deleting them is part of the change.
 
 **The first fix for an unclear line is a better name, a smaller function, or a named intermediate
-— never a comment.** When you have real rationale, route it per §5c: `implementation/` for a
-local ruling, the unit's `README.md` for usage, a *test* for a behavioural claim, a ledger task
+— never a comment.** When you have real rationale, route it per §5c: `docs/` for a
+local ruling, the unit's `README.md` for usage, a _test_ for a behavioural claim, a ledger task
 for undone work, the commit message for history. Never the source.
 
 ## Build Verification
 
-After every implementation batch, **delegate the gate to `cc-tester`**:
+After every implementation batch, **the full gate goes to `cc-tester`**:
 
-- Ask `cc-tester` to run `bun run verify` and report the verdict. Never run the gate inline, and
-  never stream its output through this context.
+- Ask `cc-tester` to run `bun run verify` and report the verdict. Never stream a full gate through
+  this context — that is the whole reason the agent exists.
+- **A single scoped step is yours to run.** `bun run verify --only lint`, or one test file, is a
+  handful of lines and you own the fix either way (`PLAIN_LANGUAGE.md` §12). A scoped
+  green is never a green gate, so say which you have.
 - On `✗`: fix the reported failures, then re-delegate. Repeat until `✓ green`.
 - Never leave a broken build.
 
@@ -129,10 +150,10 @@ Stop and report rather than proceeding, when:
   signature creates work that must be undone. Ask `cc-plan`.
 - **The change would add a runtime dependency.** Always requires approval first.
 - **The change needs something the library does not expose.** That is an upstream question
-  (`governance/FORGE_CONSUMPTION.md` §3a), not a local helper to invent mid-implementation.
+  (`FORGE_CONSUMPTION.md` §3a), not a local helper to invent mid-implementation.
 - **A plan step contradicts a documented boundary — the boundary wins.** Report the conflict; do
   not quietly implement either side.
-- **A plan step would require editing `.decisions/governance/`.** Governance is overwrite-on-sync
+- **A plan step would require editing the canon.** Governance is overwrite-on-sync
   and is not this repository's to amend; report it as a corpus change instead.
 - **Two `cc-tester` cycles have failed on the same root cause.** A third attempt at the same fix
   is guessing. Report what you tried and what the gate says.
@@ -141,6 +162,13 @@ Stop and report rather than proceeding, when:
   improvements are the most expensive kind of change to review.
 
 ## Return Format
+
+> **This section governs the agent-to-agent report** — the structured handoff the calling agent
+> reads. It is a data shape, and it stays rigid.
+>
+> **Prose addressed to a human being is governed by `PLAIN_LANGUAGE.md` instead**: lead
+> with the outcome, match length to substance, say plainly what did not get done, and do not
+> narrate the steps a reader already watched happen (§3d, §8, §9).
 
 Report back:
 
@@ -165,6 +193,11 @@ but whatever the ledger ends up carrying, **your implementation scope stays plan
 
 ## Delegation
 
+**Delegate a track that is genuinely independent and sizeable. Do not delegate what you could
+finish in a handful of tool calls, and never delegate in order to double-check your own work** —
+a second agent re-reading your change is the same reasoning at one remove, at the cost of a whole
+context (`PLAIN_LANGUAGE.md` §12). One agent where one suffices.
+
 You may spawn sub-agents to parallelise segmentable work — for example, applying one mechanical
 change across many files. Three standing conditions:
 
@@ -175,7 +208,7 @@ change across many files. Three standing conditions:
 3. **You never delegate a design decision** — signatures, placement, and boundary calls are this
    agent's reason for existing.
 
-Gate runs go to `cc-tester` regardless of depth.
+Full-gate runs go to `cc-tester` regardless of depth.
 
 ## Navigation
 
@@ -188,8 +221,10 @@ signature**, which `Grep` will under-report on re-exported or aliased symbols.
 
 ## Coding Ruleset
 
-> Before touching a layer, read its governing doc — locate it via the **`CLAUDE.md` Guide
-> Index**. That doc owns the rules; this section owns only the conventions that span every layer.
+> Before touching a layer, read its governing doc — reach it with `knowledge_search` then
+> `knowledge_read` (`AGENT_GUIDE.md §1`), or with `warden search` and `warden outline` where no
+> warden MCP is configured. That doc owns the rules; this section owns only the conventions
+> that span every layer.
 
 ### Naming Conventions
 
@@ -200,26 +235,26 @@ signature**, which `Grep` will under-report on re-exported or aliased symbols.
 - **Test fakes**: `fake` prefix (`fakeKV`, `fakeContext`)
 - **Module constants**: SCREAMING_SNAKE_CASE
 - **Option and shape type suffixes** — `*Config` for validated data, `*Options` for behaviour
-  knobs, `*Definition` for declarative shapes: see `governance/PRODUCTION_TS_RULES.md` §1d, which
+  knobs, `*Definition` for declarative shapes: see `CODE_RULES.md` §1d, which
   owns the naming rule these suffixes attach to
 - **Reachability** — an exported name carries a domain word, not just a verb and a generic noun;
   one domain word is the floor and roughly the ceiling: see
-  `governance/PRODUCTION_TS_RULES.md` §7, which owns the rule
+  `CODE_RULES.md` §7, which owns the rule
 
 ### Structure
 
 - Early returns over nested conditions
 - One exported function per exported concern — no multi-purpose helpers
 - Factory functions accept dependencies as parameters; no module-level mutable state
-  (`governance/PRODUCTION_TS_RULES.md` §1)
+  (`CODE_RULES.md` §1)
 - Prefer array methods, object spread, and nullish coalescing over imperative loops and mutation
-- Comments obey the budget in `governance/PRODUCTION_TS_RULES.md` §5a. No `@example`, ever.
+- Comments obey the budget in `CODE_RULES.md` §5a. No `@example`, ever.
 - Named exports only — no default exports except the Worker entry
 
 ### Error Handling
 
 - Return `Result<T, E>` for operations that fail predictably; a service never returns a
-  `Response` (`governance/ERROR_HANDLING.md` §2b)
+  `Response` (`apps/ERROR_HANDLING.md` §2b)
 - Let programming defects propagate to the error boundary; never catch them defensively
 - Catch an infrastructure failure at the service call site, log it with the request id, and
   return a `503`
@@ -233,10 +268,10 @@ signature**, which `Grep` will under-report on re-exported or aliased symbols.
 
 ### Where New Code Goes
 
-1. **Determine the layer** — concern first (`governance/APP_ARCHITECTURE.md` §4a).
+1. **Determine the layer** — concern first (`APP_ARCHITECTURE.md` §4a).
 2. **Confirm the library does not already provide it**
-   (`governance/FORGE_CONSUMPTION.md` §1a).
+   (`FORGE_CONSUMPTION.md` §1a).
 3. **Write the test** where this repository places tests — uniformly, per its
-   `implementation/` docs.
+   `docs/` docs.
 4. **Register the route and its guards** in the route map and the controller binding, never
    anywhere else.

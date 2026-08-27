@@ -1,0 +1,91 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "promise", "jsx-a11y"],
+  // `tooling/lint/plugin`, not `tooling/lint`: oxlint loads a JS plugin through node, and node
+  // refuses to strip types from a file under `node_modules`. The `/plugin` subpath is forge's
+  // committed esbuild bundle, which is the spelling a consumer can actually load.
+  "jsPlugins": ["@y-core/forge/tooling/lint/plugin"],
+  "categories": { "correctness": "error" },
+  "ignorePatterns": [".forge/**", ".types/**"],
+  "rules": {
+    "forge/suppression-needs-reason": "error",
+    "forge/a11y-aria-beside-data": "error",
+    "forge/a11y-heading-size-by-class": "error",
+    "forge/a11y-label-association": "error",
+    "forge/a11y-live-politeness": "error",
+    "forge/a11y-no-aria-readonly-on-button": "error",
+    "forge/a11y-one-live-region": "error",
+    "forge/color-theme-no-raw-utility": "error",
+    "forge/color-token-only": "error",
+    "forge/data-slot-before-spread": "error",
+    "forge/focus-ring": "error",
+    "forge/interaction-focus-visible": "error",
+    "forge/no-inline-style": "error",
+    "forge/no-nested-card": "error",
+    "forge/optional-prop-undefined": "error",
+    "forge/platform-entry-motion": "error",
+    "forge/platform-logical-spacing": "error",
+    "forge/platform-text-balance": "error",
+    "forge/platform-text-pretty": "error",
+    "forge/reduced-motion": "error",
+    "forge/spacing-scale-only": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-non-null-assertion": "error",
+    "eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_", "ignoreRestSiblings": true }],
+    "eslint/no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          { "group": ["valibot"], "message": "Import `v` from the validation facade (@y-core/forge/validation) — never valibot directly." },
+          { "group": ["@y-core/forge/tooling/*"], "message": "A build-time subpath belongs in config/, never in src/ or tests/." }
+        ]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      // A spec's job is adversarial markup, so the a11y and design rules are off in the suite —
+      // forge draws the same line in its own config. `exact-markup-assertion` replaces them: it is
+      // the rule that matters for a test, and CLAUDE.md bans substring matching on markup anyway.
+      "files": ["**/*.test.ts", "**/*.test.tsx", "**/*.browser.ts"],
+      "rules": {
+        "typescript/no-non-null-assertion": "off",
+        "forge/exact-markup-assertion": "error",
+        "forge/a11y-aria-beside-data": "off",
+        "forge/a11y-heading-size-by-class": "off",
+        "forge/a11y-label-association": "off",
+        "forge/a11y-live-politeness": "off",
+        "forge/a11y-no-aria-readonly-on-button": "off",
+        "forge/a11y-one-live-region": "off",
+        "forge/color-theme-no-raw-utility": "off",
+        "forge/color-token-only": "off",
+        "forge/data-slot-before-spread": "off",
+        "forge/focus-ring": "off",
+        "forge/interaction-focus-visible": "off",
+        "forge/no-inline-style": "off",
+        "forge/no-nested-card": "off",
+        "forge/optional-prop-undefined": "off",
+        "forge/platform-entry-motion": "off",
+        "forge/platform-logical-spacing": "off",
+        "forge/platform-text-balance": "off",
+        "forge/platform-text-pretty": "off",
+        "forge/reduced-motion": "off",
+        "forge/spacing-scale-only": "off"
+      }
+    },
+    {
+      // The two files that are *supposed* to import a build-time subpath.
+      "files": ["config/**", "playwright.config.ts"],
+      "rules": {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              { "group": ["valibot"], "message": "Import `v` from the validation facade (@y-core/forge/validation) — never valibot directly." }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

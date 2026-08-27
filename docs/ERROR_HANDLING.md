@@ -17,7 +17,7 @@ description: "The fragment renderers this app calls, its HTMX target pattern, an
 - §1a renderError for Action Failures
 - §1b renderSuccess for Completed Actions
 - §1c renderValidationErrors for Form Field Errors
-- §2 `htmlResponse`: full-page HTML wrapping for JSX views
+- §2 Full-Page Rendering via renderPage: full-page HTML wrapping for JSX views
 - §2a renderPage for Full-Page Handler Views
 - §2b Never Mix renderPage with HTMX Fragment Routes
 - §3 Fail-closed posture: guards reject immediately, no silent fallback
@@ -26,7 +26,7 @@ description: "The fragment renderers this app calls, its HTMX target pattern, an
 - §5a Result Div as Fragment Swap Target
 - §5b Error Fragment Structure
 - §5c Test Assertions for Fragment Output
-- §6 Status codes: 4xx for client errors, 5xx for service failures
+- §6 forge Error Boundary: 4xx for client errors, 5xx for service failures
 - §6a Catch-All for Unhandled Throws
 - §6b Never Return Stack Traces to Clients
 
@@ -86,11 +86,11 @@ See [INPUT_VALIDATION.md](./INPUT_VALIDATION.md) §1b for the full parse flow.
 
 ### 2a. renderPage for Full-Page Handler Views
 
-`renderPage` from `@y-core/forge/render` converts a JSX tree to an `HtmlResponse`. It is
+`renderPage` from `@y-core/forge/jsx` converts a JSX tree to an `HtmlResponse`. It is
 called inside the `view` function of a `definePage` controller:
 
     // In a full-page controller (src/controllers/home.tsx):
-    import { renderPage } from "@y-core/forge/render"
+    import { renderPage } from "@y-core/forge/jsx"
 
     handler: definePage<AppEnv, AppConfig, HomeData>({
       cache: "no-store",
@@ -115,15 +115,15 @@ produces broken UI.
 
 ## 3. Fail-Closed Posture
 
-See [`BOUNDARIES.md`](../governance/BOUNDARIES.md) §5 for the fail-closed posture, the ban on
-swallowing a verification error, and [`BOUNDARIES.md`](../governance/BOUNDARIES.md) §2d for why a
+See `BOUNDARIES.md` §5 for the fail-closed posture, the ban on
+swallowing a verification error, and `BOUNDARIES.md` §2d for why a
 policy violation is 403 rather than 400.
 
 ---
 
 ## 4. Error Taxonomy
 
-See [`ERROR_HANDLING.md`](../governance/ERROR_HANDLING.md) §5 for the three-way taxonomy — expected,
+See `ERROR_HANDLING.md` §5 for the three-way taxonomy — expected,
 unexpected, infrastructure — and what each returns and logs.
 
 ---

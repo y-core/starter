@@ -1,12 +1,14 @@
 import { describe, expect, it } from "bun:test";
+
 import { assets } from "@assets";
+
 import app from "../src/worker";
 
 const MOCK_ASSETS = { fetch: async () => new Response("", { status: 200 }) } as unknown as Fetcher;
 
 const MINIMUM_ENV = {
   ASSETS: MOCK_ASSETS,
-  BASE_URL: "https://example.com",
+  SITE_ORIGIN: "https://example.com",
   CSRF_SECRET: "de7bf4aef360e3a4c3254c9cec7e45d0f1fd98cc2219c62b5b07e826ba1bcc6e",
   EMAIL_API_KEY: "test-api-key",
   EMAIL_FROM: "from@example.com",
@@ -75,7 +77,7 @@ describe("Layout — sticky neutralisation on the navbar <details>", () => {
     expect(match).not.toBeNull();
     const classAttr = match?.[1] ?? "";
     expect(classAttr).toBe(
-      "group backdrop-blur left-0 inset-y-0 md:inset-x-0 md:top-0 md:bottom-auto md:right-auto max-md:bg-transparent max-md:backdrop-blur-none static z-auto bg-transparent",
+      "group backdrop-blur inset-y-0 left-0 md:inset-x-0 md:top-0 md:right-auto md:bottom-auto max-md:bg-transparent max-md:backdrop-blur-none static z-auto bg-transparent",
     );
 
     // Overrides applied by cn():
@@ -95,11 +97,11 @@ describe("Layout — sticky neutralisation on the navbar <details>", () => {
 
 /** Forge's `menu-link-item` class string, lifted from rendered output. */
 const MENU_ITEM_CLASS =
-  "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm text-popover-foreground bg-transparent border-0 cursor-pointer outline-none hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50";
+  "flex w-full items-center gap-2 rounded-field px-2 py-1.5 text-start text-sm text-popover-foreground bg-transparent border-0 cursor-pointer outline-none hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground state-disabled";
 
 /** Forge's `navbar-link` class string, lifted from rendered output. */
 const BAR_LINK_CLASS =
-  "inline-flex items-center gap-1 rounded-md px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring aria-[current]:bg-accent aria-[current]:text-accent-foreground aria-[current]:font-semibold";
+  "inline-flex items-center gap-1 rounded-field px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground cursor-pointer focus-ring aria-[current]:bg-accent aria-[current]:font-semibold aria-[current]:text-accent-foreground";
 
 const menuItem = (href: string, label: string): string =>
   `<a role="menuitem" data-slot="menu-link-item" class="${MENU_ITEM_CLASS}" href="${href}">${label}</a>`;

@@ -15,20 +15,20 @@ description: "The registered middleware chain, the guard sentinels each route co
 
 ## 0. Quick Reference
 
-- §1 registerMiddleware: ordering (security → requestId → logging → CORS)
+- §1 registerMiddleware: ordering (requestId → security → bindings → logging → CORS)
 - §1a Middleware Ordering
-- §1b makeSecurityHeaders — CSP and Nonce
+- §1b createSecurityHeaders — CSP and Nonce
 - §1c requestId — X-Request-Id Propagation
 - §1d requestLogger — Channel Selection
 - §1e CORS: /api/* Only
-- §2 AppEnv / AppContext: Bindings (Env), render method, ForgeAppContext
+- §2 AppEnv and AppContext: Bindings (Env), render method, ForgeAppContext
 - §2a AppEnv — Bindings Type
 - §2b Context Variables — Typed Accessors
 - §2c AppContext Type
 - §2d Accessing Context Variables
 - §2e Config Access Pattern
-- §3 Route guards: contactGuard, rateLimitGuard, csrfVerifyGuard
-- §3a contactGuard
+- §3 Route guards: requireFormContentType, htmxOnlyGuard, originGuard, rateLimitGuard, csrfVerifyGuard
+- §3a requireFormContentType, htmxOnlyGuard, originGuard
 - §3b rateLimitGuard
 - §3c csrfVerifyGuard
 - §3d Guard Ordering on /api/contact
@@ -45,20 +45,42 @@ description: "The registered middleware chain, the guard sentinels each route co
 ### 1a. Middleware Ordering
 
     export function registerMiddleware(app: Forge<AppEnv>, security: SecurityHeadersOptions): void {
-      app.use("*", makeSecurityHeaders(security))            // 1. CSP/HSTS/XFO + nonce
-      app.use("*", requestId())                              // 2. X-Request-Id + context var
-      app.use("*", requestLogger<AppEnv>({...}))             // 3. request/response logging
-      app.use("/api/*", cors({ origins }))                   // 4. CORS for API routes only
+      app.use("*", requestId({ trustCfHeaders: true }))        // 1. X-Request-Id + context var
+      app.use("*", createSecurityHeaders(security))            // 2. CSP/HSTS/XFO + nonce
+      app.use("*", validateBindings(bindingSetSchema([...])))  // — binding shape, once per env
+      app.use("*", requestLogger<AppEnv>({...}))               // 3. request/response logging
+      app.use("/api/*", cors({ origins }))                     // 4. CORS for API routes only
     }
 
-Order is security-critical. `makeSecurityHeaders` must run first because it injects the
-per-request nonce into context — any middleware or handler that reads `getNonce(c)` depends
-on this running before it. `requestId` must run before `requestLogger` because the logger
-reads the request ID from context when building log entries.
+Order is security-critical. The four numbered entries are BOUNDARIES §2a in full — request identity
+→ security headers → logging → cross-origin. `requestId` runs first so that anything downstream,
+including a refusal raised by a later middleware, is correlatable; `createSecurityHeaders` runs
+before the rest because it queues the response headers ahead of the downstream chain, so a later
+throw still yields a hardened error page, and because it injects the per-request nonce that anything
+reading `getNonce(c)` depends on; `requestLogger` runs after both, since it reads the request ID
+when building log entries.
 
-### 1b. makeSecurityHeaders — CSP and Nonce
+The binding check is this app's own addition, placed *within* that order rather than being part of
+it. It sits after the headers because a shape refusal throws: run first, its 500 escapes before the
+headers exist. Measured on the real chain, a `LOGS_KV` of the wrong shape loses
+`Strict-Transport-Security`, `Cross-Origin-Opener-Policy`, `Cross-Origin-Resource-Policy`,
+`X-Frame-Options` and `X-Request-Id` when the throw precedes the headers, and keeps all five when it
+follows them — an error page with no framing protection and no correlation id. (CSP,
+`X-Content-Type-Options` and `Referrer-Policy` survive either way; the error boundary supplies a
+minimal set.) It sits before `requestLogger` because that middleware builds
+`kvLogChannel(c.env.LOGS_KV)`, so a malformed KV binding must be refused before the logger reads it.
+`validateBindings` caches the validated `env` reference, so the shape check costs one pass per
+isolate rather than one per request, and its position costs nothing. Both bindings are declared
+`optional: true` — an absent one passes, because the code degrades (console-only logging, a no-op
+limiter), while one present with the wrong shape still fails.
 
-`makeSecurityHeaders(security)` from `@y-core/forge/security` does two things per request:
+`trustCfHeaders: true` is deliberate: Cloudflare strips and re-writes `CF-*` headers at the edge, so
+on Workers they are trustworthy. Forge defaults to distrust because the same code behind a bare
+proxy would let a caller forge them.
+
+### 1b. createSecurityHeaders — CSP and Nonce
+
+`createSecurityHeaders(security)` from `@y-core/forge/security` does two things per request:
 
 1. Generates a fresh cryptographic nonce and stores it in `SecureHeadersContext`.
 2. Writes `Content-Security-Policy`, `Strict-Transport-Security`, `X-Frame-Options`,
@@ -66,7 +88,7 @@ reads the request ID from context when building log entries.
 
 The `security` argument (`SecurityHeadersOptions`) is constructed in `worker.ts` (prod) and
 `worker.dev.ts` (dev). Dev adds the Wrangler live-reload hash to `scriptSrc`. See
-[`APP_ARCHITECTURE.md`](../governance/APP_ARCHITECTURE.md) §1c for why the divergence is a separate entry module rather than a runtime flag.
+`APP_ARCHITECTURE.md` §1c for why the divergence is a separate entry module rather than a runtime flag.
 
 ### 1c. requestId — X-Request-Id Propagation
 
@@ -116,7 +138,7 @@ bindings:
     // ASSETS:               Fetcher       — static asset passthrough to public/
     // LOGS_KV:              KVNamespace   — optional, structured log persistence
     // RATE_LIMITER:         RateLimiter   — optional, 5 req / 60 s per IP
-    // BASE_URL:             string        — canonical origin, e.g. https://example.com
+    // SITE_ORIGIN:          string        — optional; falls through to the `SITE_ORIGIN` literal in src/app/config.ts
     // LOG_LEVEL:            string        — "debug" | "info" | "warn" | "error"
     // CSRF_SECRET:          string        — required, hex-encoded HMAC key
     // EMAIL_API_KEY:        string        — required for email delivery
@@ -131,7 +153,7 @@ above are required and will cause `configStore.get(c.env)` to throw at parse tim
 Context variables set by global middleware are accessed via forge's typed helpers, never
 via `c.get(...)` or `c.set(...)` directly:
 
-    const nonce    = getNonce(c)                  // set by makeSecurityHeaders()
+    const nonce    = getNonce(c)                  // set by createSecurityHeaders()
     const reqId    = requestIdCtx.getOptional(c)  // set by requestId()
     const logger   = requestLog.get(c)            // set by requestLogger()
 
@@ -147,14 +169,14 @@ from `src/app/context.ts` — do not reconstruct inline.
 
 Full-page controllers use `definePage({ loader, view })` from `@y-core/forge/app`. The
 `loader` receives `(c, config)` and returns data; the `view` receives `(c, config, state)`
-and calls `renderPage(<View …/>)` from `@y-core/forge/render`. The controller materializes
+and calls `renderPage(<View …/>)` from `@y-core/forge/jsx`. The controller materializes
 `ctx` via `renderContext` in the `loader` and passes it as a view prop.
 
 ### 2d. Accessing Context Variables
 
 Always use the typed accessors exported by forge — never access raw context internals:
 
-    const nonce = getNonce(c)                  // set by makeSecurityHeaders
+    const nonce = getNonce(c)                  // set by createSecurityHeaders
     const reqId = requestIdCtx.getOptional(c)  // set by requestId(); undefined if unset
     const logger = requestLog.get(c)           // set by requestLogger()
 
@@ -180,26 +202,35 @@ Guards are `Middleware` values composed into route middleware arrays. They are n
 applied globally — each is scoped to specific routes via `createController` in
 `src/router.tsx`. See [ROUTING.md](./ROUTING.md) for how they are attached to routes.
 
-### 3a. contactGuard
+### 3a. requireFormContentType, htmxOnlyGuard, originGuard
 
-    export const contactGuard: Middleware = async (context, next) => {
-      const c = context as AppContext
-      if (c.method !== "POST") return new Response("Forbidden", { status: 403 })
-      const { allowedOrigins } = configStore.get(c.env).site.url
-      if (!verifyOrigin(c.request, allowedOrigins).ok) return new Response("Forbidden", { status: 403 })
-      if (c.request.headers.get("HX-Request") !== "true") return new Response("Forbidden", { status: 403 })
-      const ct = c.request.headers.get("content-type") ?? ""
-      if (!ct.includes("application/x-www-form-urlencoded")) return new Response("Unsupported Media Type", { status: 415 })
-      return next()
+The three transport guards. The first is forge's, imported and called; the other two are this
+app's, and each holds exactly one check.
+
+    // @y-core/forge/security — 415 unless the media type is a form encoding.
+    requireFormContentType()
+
+    // src/app/middleware.ts
+    export const htmxOnlyGuard: Middleware = (context, next) => {
+      const c = getAppContext<AppEnv, Record<string, string>, AppConfig>(context)
+      return isHxRequest(c) ? next() : new Response("Forbidden", { status: 403 })
     }
 
-Four sequential checks, each fail-closed (returns error, never `next()` on failure):
+    export const originGuard: Middleware = originProtection<AppEnv>({
+      allowedOrigins: (c) => configStore.get(c.env).site.url.allowedOrigins,
+    })
 
-1. **Method** — rejects non-POST immediately (cheapest check).
-2. **Origin** — uses `verifyOrigin` from `@y-core/forge/security`; checks `Origin` and
-   `Referer` headers against `allowedOrigins`.
-3. **HX-Request** — enforces HTMX context; prevents direct browser-form submissions.
-4. **Content-Type** — requires `application/x-www-form-urlencoded`; rejects JSON bodies.
+1. **Content-Type** — `requireFormContentType()` accepts `application/x-www-form-urlencoded` and
+   `multipart/form-data`, normalising the media type case-insensitively and stripping parameters
+   before comparing. A hand-written `ct.includes(...)` gets both wrong.
+2. **HX-Request** — `isHxRequest` from `@y-core/forge/html/htmx`, not a raw header read. Enforces
+   the HTMX context; the route answers only fragments, which are unusable to any other client.
+3. **Origin** — `originProtection` layers Fetch-Metadata over the `allowedOrigins` allowlist. It is
+   strictly stronger than a bare `verifyOrigin`, which accepts a request carrying neither `Origin`
+   nor `Referer`.
+
+There is no method check: `routes.contact` is `post(...)`, so the router answers 405 before any
+middleware runs.
 
 ### 3b. rateLimitGuard
 
@@ -214,7 +245,7 @@ dev). When present, the Cloudflare Rate Limiter binding enforces 5 requests per 
 per IP. Exhausted requests receive a 429 response from the binding itself.
 
 This is not a security bypass — rate limiting is a DoS mitigation, not an auth check. The
-security-critical guards (`contactGuard`, `csrfVerifyGuard`) are unaffected by
+security-critical guards (`originGuard`, `csrfVerifyGuard`) are unaffected by
 `RATE_LIMITER` absence.
 
 ### 3c. csrfVerifyGuard
@@ -234,17 +265,19 @@ module level because the secret may differ between requests in test environments
 ### 3d. Guard Ordering on /api/contact
 
     // src/router.tsx — createController actions
-    contact: { middleware: contactGuards, handler: handleContact }
-    // contactGuards = createMiddleware(contactGuard, rateLimitGuard, csrfVerifyGuard)
+    contact: { middleware: contactGuards, handler: contactAction }
+    // contactGuards = createMiddleware(requireFormContentType(), htmxOnlyGuard, originGuard, rateLimitGuard, csrfVerifyGuard)
 
-Guards execute left-to-right. Order reflects cost and specificity:
+Guards execute left-to-right, in BOUNDARIES §2c order — request shape, origin, rate limit, CSRF:
 
-1. `contactGuard` — cheap header checks, eliminates invalid requests early.
-2. `rateLimitGuard` — network call to Cloudflare binding; only reached if headers pass.
+1. `requireFormContentType()`, `htmxOnlyGuard`, `originGuard` — header inspection with no crypto,
+   eliminating malformed and cross-origin requests first.
+2. `rateLimitGuard` — network call to the Cloudflare binding; only reached if the headers pass.
 3. `csrfVerifyGuard` — Web Crypto HMAC verification; most expensive, last to run.
 
 This ordering minimises compute on abusive or malformed requests. See
-[`BOUNDARIES.md`](../governance/BOUNDARIES.md) §2c for the ordering rule and §5 for the fail-closed requirement.
+`BOUNDARIES.md` §2c for the ordering rule and `BOUNDARIES.md` §5 for the fail-closed
+requirement.
 
 ---
 
@@ -267,7 +300,7 @@ This ordering minimises compute on abusive or malformed requests. See
 
 Called in the `loader` of a `definePage` controller. The third argument is the CSRF action path
 as a plain string — e.g. `renderContext(c, config, routes.contact.href())`. Controllers that
-omit `csrfPath` (e.g. the 404 controller and adminLogs) receive an empty token. Because
+omit `csrfPath` (e.g. the 404 controller and the log viewer) receive an empty token. Because
 `mintCsrf` is async (it signs a token with Web Crypto), the function is async.
 
 ### 4b. RenderContext Type
@@ -300,4 +333,4 @@ inline `<script>` or `<style>` tag:
 
 Omitting `nonce` on inline scripts will cause the browser to block execution under the
 app's CSP. The `nonce` value is already present in the `Content-Security-Policy` header
-because `makeSecurityHeaders` (§1b) set it before the handler ran.
+because `createSecurityHeaders` (§1b) set it before the handler ran.

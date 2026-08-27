@@ -13,14 +13,14 @@ description: "The route map, the controller binding, the guard checklist a new r
 
 ## 0. Quick Reference
 
-- §1 Current routes: route map (routes.ts) + controller binding (router.tsx)
+- §1 routes.ts + router.tsx — Current Route Table: the map and the controller binding
 - §1a Route Map (src/routes.ts)
 - §1b Controller Binding (src/router.tsx)
 - §1c Route Shape
 - §2 healthCheck: /api/health, CSRF key validation
 - §2a /api/health
 - §2b What healthCheck Validates
-- §3 Contact: /api/contact, three guards, HTMX-only POST
+- §3 Contact: /api/contact, five guards, HTMX-only POST
 - §3a /api/contact — HTMX-Only POST Action
 - §3b Guard Order
 - §3c handleContact
@@ -28,11 +28,11 @@ description: "The route map, the controller binding, the guard checklist a new r
 - §4a GET / — Full Page with Contact Form
 - §4b Why csrfVerifyGuard on GET
 - §4c homeController Structure
-- §5 Admin logs: /admin/logs, adminLogsController (definePage + readLogViewer + LogViewerContent), TODO(auth)
-- §5a /admin/logs — Log Viewer
-- §5b TODO(auth) Comment
+- §5 Admin Logs Route: /showcase/logs, showLogsController (definePage + `loadLogViewer`), debug-gated by `access`
+- §5a /showcase/logs — Log Viewer
+- §5b Access Control
 - §5c LOGS_KV Absence
-- §6 Adding routes: checklist
+- §6 Adding New Routes: checklist
 - §6a Checklist
 - §6b Route Registration Flow
 - §6c HTMX Fragment Routes
@@ -55,7 +55,7 @@ registered in `worker.ts`, middleware files, or handler files. `worker.ts` calls
       health:    get("/api/health"),
       contact:   post("/api/contact"),
       home:      get("/"),
-      adminLogs: get("/admin/logs"),
+      showcase: { logs: get("/showcase/logs"), ...showcaseRoutes("/showcase/ui") },
     })
 
 The `get()`/`post()` path helpers (re-exported by forge from `@remix-run/fetch-router/routes`)
@@ -66,21 +66,23 @@ are the canonical name-keyed form. `routes.contact.href()` still resolves to `"/
     // src/router.tsx
     import { healthCheck } from "@y-core/forge/app"
     import { createController } from "@y-core/forge/router"
-    import { adminLogsController } from "./controllers/admin-logs"
     import { contactController } from "./controllers/actions/contact"
     import { homeController } from "./controllers/home"
+    import { showLogsController } from "./controllers/show.logs"
     import { routes } from "./routes"
 
     export const controller = createController(routes, {
       actions: {
-        health:    healthCheck<AppContext["env"]>({ csrf: () => true }),
-        contact:   contactController,
-        home:      homeController,
-        adminLogs: adminLogsController,
+        health:  healthCheck<AppContext["env"]>({ csrf: () => true }),
+        contact: contactController,
+        home:    homeController,
       },
     })
 
-`contactController`, `homeController`, and `adminLogsController` are `{ middleware, handler }`
+    // The showcase subtree is mapped separately, off `routes.showcase`.
+    app.map(routes.showcase, createController(routes.showcase, { actions: { logs: showLogsController } }))
+
+`contactController`, `homeController`, and `showLogsController` are `{ middleware, handler }`
 objects (or bare `RequestHandler` values) exported from their controller modules; `health`
 stays inline as a forge factory.
 
@@ -132,8 +134,8 @@ Do not add authentication guards to `/api/health`. It is intentionally public.
     contact: { method: "POST", pattern: "/api/contact" }
 
     // router.tsx
-    contact: { middleware: contactGuards, handler: handleContact }
-    // contactGuards = createMiddleware(contactGuard, rateLimitGuard, csrfVerifyGuard)
+    contact: { middleware: contactGuards, handler: contactAction }
+    // contactGuards = createMiddleware(requireFormContentType(), htmxOnlyGuard, originGuard, rateLimitGuard, csrfVerifyGuard)
 
 This is a fragment-only route (no full-page render). It accepts `POST` only. Every request must
 arrive via HTMX from an allowed origin.
@@ -142,17 +144,25 @@ arrive via HTMX from an allowed origin.
 
 Guards run left to right. Order is load-bearing:
 
-    [contactGuard, rateLimitGuard, csrfVerifyGuard]
+    [requireFormContentType(), htmxOnlyGuard, originGuard, rateLimitGuard, csrfVerifyGuard]
 
 | Position | Guard | Rejects on |
 |---|---|---|
-| 1 | `contactGuard` | Non-POST, disallowed origin, missing `HX-Request`, wrong `Content-Type` |
-| 2 | `rateLimitGuard` | Too many requests from this IP |
-| 3 | `csrfVerifyGuard` | Missing or invalid `__csrf` token |
+| 1 | `requireFormContentType()` | `Content-Type` is not a form encoding (415) |
+| 2 | `htmxOnlyGuard` | Missing `HX-Request` (403) |
+| 3 | `originGuard` | Cross-site `Sec-Fetch-Site`, or an `Origin`/`Referer` outside the allowlist (403) |
+| 4 | `rateLimitGuard` | Too many requests from this IP (429) |
+| 5 | `csrfVerifyGuard` | Missing or invalid `__csrf` token (403) |
 
-`contactGuard` runs first because it is cheapest (header inspection, no crypto). Rate
-limiting runs before CSRF to avoid burning DB writes on flood traffic. CSRF runs last because it
-requires a `SubtleCrypto` HMAC verify.
+`BOUNDARIES.md` §2c order: request shape, then origin, then rate limit, then CSRF. The first three are
+header inspection with no crypto, so they are cheapest. Rate limiting runs before CSRF to avoid
+burning writes on flood traffic; CSRF runs last because it requires a `SubtleCrypto` HMAC verify.
+
+`originGuard` is forge's `originProtection`, not a bare `verifyOrigin`: it layers Fetch-Metadata
+over the origin allowlist, so a request carrying neither `Origin` nor `Referer` is refused unless
+the browser vouched for it with `Sec-Fetch-Site` — a forbidden header name web content cannot set.
+
+There is no method check: `routes.contact` is `post(...)`, so the router answers 405 itself.
 
 ### 3c. handleContact
 
@@ -204,7 +214,7 @@ See [MIDDLEWARE_AND_CONTEXT.md](./MIDDLEWARE_AND_CONTEXT.md) §3c for the guard 
     }
 
 The `loader` marshals a `RenderContext` (`ctx`) — providing the CSRF token, nonce, and
-Turnstile site key — and the `view` calls `renderPage()` from `@y-core/forge/render` to
+Turnstile site key — and the `view` calls `renderPage()` from `@y-core/forge/jsx` to
 convert the JSX to an `HtmlResponse`. `cache: "no-store"` sets the Cache-Control header.
 `routes.contact.href()` returns `"/api/contact"` from the typed route map, keeping the CSRF
 path in sync with the route definition.
@@ -213,33 +223,25 @@ path in sync with the route definition.
 
 ## 5. Admin Logs Route
 
-### 5a. /admin/logs — Log Viewer
+### 5a. /showcase/logs — Log Viewer
 
     // routes.ts
-    adminLogs: get("/admin/logs")
+    showcase: { logs: get("/showcase/logs"), ... }
 
     // router.tsx
-    adminLogs: adminLogsController   // defined in src/controllers/admin-logs.tsx
+    logs: showLogsController   // defined in src/controllers/show.logs.tsx
 
-`adminLogsController` is a `definePage` handler in `src/controllers/admin-logs.tsx`. Its
-`loader` calls `readLogViewer(c, { kv, basePath })` from `@y-core/forge/logging/http` to
-fetch paginated log entries; its `view` calls `renderPage(<Layout ctx={ctx}><LogViewerContent
-data={state.data} icon={CoreIcon} /></Layout>)`. There is no separate `logs.tsx` view
-component — the log viewer UI is provided by `LogViewerContent` from forge.
+`showLogsController` is a `definePage` handler in `src/controllers/show.logs.tsx`. Its
+`loader` calls `loadLogViewer(c, config, { channel, access, icon, context, layout, basePath })`
+from `@y-core/forge/logging/show`, which returns a fully rendered `Response` for every path; its
+`view` is a pass-through. There is no separate `logs.tsx` view component — the log viewer UI is
+provided by forge.
 
-### 5b. TODO(auth) Comment
+### 5b. Access Control
 
-    // TODO(auth): mount an auth middleware before exposing this route in production
-
-This comment appears in `router.tsx` above the `adminLogs` action entry. It is intentional —
-the log viewer is useful during development and is gated by the deploy environment. Before any
-production deploy, an auth middleware (session cookie check, Basic Auth over HTTPS, or
-Cloudflare Access) must be added:
-
-    adminLogs: { middleware: [requireAdminSession], handler: adminLogsController }
-
-Do not remove the TODO comment until the auth middleware is wired in. It serves as a deploy
-checklist item.
+The route carries no middleware guard. `loadLogViewer`'s `access` predicate is the gate: it reads
+`site.debug`, true only under `LOG_LEVEL=DEBUG`, and production leaves `LOG_LEVEL` unset — so the
+route answers 403 there. See [STRUCTURED_LOGGING.md](./STRUCTURED_LOGGING.md) §4b.
 
 ### 5c. LOGS_KV Absence
 
@@ -258,9 +260,9 @@ When adding any new route, complete all items before marking done:
 - [ ] Add the route entry to `src/routes.ts` via `get()`/`post()` — never define routes in `worker.ts` or handlers
 - [ ] Add the controller binding to `src/router.tsx` in `createController`'s `actions` map
 - [ ] POST/action routes: include `csrfVerifyGuard` in the middleware array
-- [ ] HTMX-only POST routes: include a `contactGuard`-equivalent as the first middleware
+- [ ] HTMX-only POST routes: open with `requireFormContentType()`, `htmxOnlyGuard` and `originGuard`, in that order
 - [ ] `/admin/*` routes: add auth middleware or document `// TODO(auth)` with a tracking note
-- [ ] Full-page controllers: use `definePage({ loader, view })` in `src/controllers/`; `loader` marshals `renderContext` + data; `view` calls `renderPage(<View ctx={ctx} … />)` from `@y-core/forge/render`
+- [ ] Full-page controllers: use `definePage({ loader, view })` in `src/controllers/`; `loader` marshals `renderContext` + data; `view` calls `renderPage(<View ctx={ctx} … />)` from `@y-core/forge/jsx`
 - [ ] Fragment handlers: use `fragmentResponse(renderSuccess(...))` / `renderValidationErrors`
 - [ ] New view component defined in `src/views/` (page views own `<Layout>`; not inline in the controller)
 - [ ] New route covered by a test in `tests/` (status + security headers)
@@ -284,6 +286,6 @@ HTMX partial-swap endpoints (routes that return HTML fragments, not full pages) 
 pattern as `/api/contact`:
 
 - Route entry with `method: "POST"` in `routes.ts`; handler bound in `router.tsx`
-- `contactGuard` (or equivalent) as first middleware to require `HX-Request`
+- `htmxOnlyGuard` (after `requireFormContentType()`) to require `HX-Request`
 - Handler returns `fragmentResponse(renderSuccess(...))` or `fragmentResponse(renderValidationErrors(...), 422)` — never `renderPage()`
-- Tested with `toContain` assertions on the fragment's stable structure (see [HANDLER_TESTING.md](./HANDLER_TESTING.md) §3b)
+- Tested with `toContain` assertions on the fragment's stable structure (see [HANDLER_TESTING.md](./HANDLER_TESTING.md) §3)

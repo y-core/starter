@@ -3,16 +3,17 @@
 import { assets, CoreIcon } from "@assets";
 import { rawHtml } from "@y-core/forge/http";
 import type { JSXNode } from "@y-core/forge/jsx";
-import { FOUC_SCRIPT, Navbar } from "@y-core/forge/ui/chrome";
+import { FOUC_SCRIPT, Navbar, ThemeToggle } from "@y-core/forge/ui/chrome";
+import { Separator } from "@y-core/forge/ui/core";
+
 import type { RenderContext } from "../app/context";
 import { site } from "../model/site.content";
 import { routes } from "../routes";
 import { primaryNav, resolveNavHref } from "./nav";
-import { ThemeToggle } from "./ui";
 
 interface LayoutProps {
   ctx: RenderContext;
-  children?: JSXNode;
+  children?: JSXNode | undefined;
 }
 
 export function Layout({ ctx, children }: LayoutProps) {
@@ -71,7 +72,7 @@ export function Layout({ ctx, children }: LayoutProps) {
       <body class='flex min-h-dvh flex-col has-[[data-fill-viewport]]:h-dvh has-[[data-fill-viewport]]:overflow-hidden'>
         <a
           href='#main-content'
-          class='sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-primary-foreground'>
+          class='sr-only focus-visible:not-sr-only focus-visible:absolute focus-visible:top-4 focus-visible:left-4 focus-visible:z-50 focus-visible:rounded-lg focus-visible:bg-primary focus-visible:px-4 focus-visible:py-2 focus-visible:text-sm focus-visible:font-semibold focus-visible:text-primary-foreground'>
           Skip to main content
         </a>
 
@@ -85,7 +86,7 @@ export function Layout({ ctx, children }: LayoutProps) {
               <div class='h-9 shrink-0'>
                 <CoreIcon name='logo' class='h-7 w-auto md:h-10' />
               </div>
-              <div class='min-w-0 font-display text-xl font-semibold tracking-wider text-foreground'>Forge Studio</div>
+              <div class='min-w-0 font-serif text-xl font-semibold tracking-wider text-foreground'>Forge Studio</div>
             </a>
 
             {/* ThemeToggle is a NavSlot per forge's own guidance (rule:forge-ui-nav-theme-toggle-placement),
@@ -103,7 +104,7 @@ export function Layout({ ctx, children }: LayoutProps) {
                 collapsedAs='drawer'
                 class='static z-auto bg-transparent'
               />
-              <ThemeToggle />
+              <ThemeToggle icon={CoreIcon} />
             </div>
           </div>
         </header>
@@ -113,17 +114,19 @@ export function Layout({ ctx, children }: LayoutProps) {
         <footer class='mt-auto border-t border-border bg-card px-6 py-8 text-card-foreground'>
           <div class='mx-auto max-w-7xl'>
             <div class='flex flex-col items-center justify-between gap-4 md:flex-row'>
+              {/* modern-css-allow: forge-ui-platform-display-contents — the wrapper groups two lines into one flex item; dissolving it makes `justify-between` distribute three items on `md`, and swaps the `mt-1` line gap for `gap-4` on mobile. */}
               <div>
-                <p class='font-display text-lg font-semibold text-card-foreground'>{site.footer.entity}</p>
+                <p class='font-serif text-lg font-semibold text-card-foreground'>{site.footer.entity}</p>
                 <p class='mt-1 text-sm text-muted-foreground'>Digital Product Studio</p>
               </div>
               <nav class='flex flex-wrap justify-center gap-6 text-sm' aria-label='Footer'>
-                <a href='#contact' class='text-muted-foreground transition hover:text-foreground'>
+                <a href='#contact' class='text-muted-foreground hover:text-foreground motion-safe:transition'>
                   Contact
                 </a>
               </nav>
             </div>
-            <div class='mt-6 border-t border-border pt-6 text-center text-xs text-muted-foreground'>
+            <Separator class='mt-6' />
+            <div class='pt-6 text-center text-xs text-muted-foreground'>
               © {site.footer.copyrightStart}–{new Date().getFullYear()} {site.footer.entity}. All rights reserved.
             </div>
           </div>

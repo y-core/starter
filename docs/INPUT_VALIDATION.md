@@ -17,7 +17,7 @@ description: "The contact schema, field reading, honeypot and Turnstile wiring, 
 - §1a Contact Form Schema Definition
 - §1b Schema Placement Convention
 - §1c Field Constraints Are User-Facing
-- §2 `readFields` + `v.safeParse`: form parsing and validation flow
+- §2 Form Parsing Flow: `readFields` + `v.safeParse`
 - §2a Full Handler Parse Sequence
 - §2b parseFormData vs. c.request.formData
 - §2c readFields Returns a String Record
@@ -103,9 +103,8 @@ The complete sequence in a POST action handler:
     // 1. Bot check — earliest possible rejection
     if (isHoneypotFilled(formData)) return renderError(c, "Invalid submission", { status: 400 })
 
-    // 2. CSRF verification (via guard, see §4)
-    const guardResult = await contactGuard(c, formData, config)
-    if (!guardResult.ok) return guardResult.response
+    // 2. CSRF verification — already done by `csrfVerifyGuard` in the route's
+    //    middleware list, so the handler is unreachable with an unverified token (see §4)
 
     // 3. Extract fields as string record
     const fields = readFields(formData, ["name", "email", "message"] as const)
@@ -157,16 +156,33 @@ bot submissions.
 Turnstile is Cloudflare's bot-detection CAPTCHA. The widget renders client-side and
 posts a `cf-turnstile-response` token with the form. The handler verifies it server-side:
 
-    import { verifyTurnstile } from "@y-core/forge/turnstile"
+The action declares it; the pipeline calls it, before the parse and after the honeypot:
 
-    const turnstileResult = await verifyTurnstile({
-      token: formData.get("cf-turnstile-response") as string,
-      secretKey: config.services.turnstile.secretKey,
-    })
-    if (!turnstileResult.ok) return renderError(c, "CAPTCHA verification failed", { status: 400 })
+    turnstile: {
+      secretKey: (_c, config) => config.services.turnstile.secretKey,
+      verify: (c, config) => ({
+        expectedHostname: turnstileHostnameCtx.getOptional(c) ?? config.site.url.hostname,
+        remoteIp: c.request.headers.get("CF-Connecting-IP") ?? undefined,
+      }),
+    }
 
 The secret key comes from the `config` object derived from Worker secrets — never
 hardcoded. See CLAUDE.md security rules.
+
+**`expectedHostname` is the seam a dev entry point may move, and nothing else may.** Siteverify
+answers with the hostname it saw, and the check refuses a mismatch. Cloudflare's testing keys always
+answer `example.com`, so local development needs a different expectation — supplied by the
+`turnstileHostname` middleware, which reads `TURNSTILE_DEV_HOSTNAME` and which only
+`src/worker.dev.ts` registers. Production registers nothing, so `getOptional` is undefined there and
+the comparison is the site origin's hostname whatever the environment holds. The variable, the three
+postures it serves, and why this is an entry-point allowance rather than a schema default:
+[CONFIGURATION_AND_SECRETS.md](./CONFIGURATION_AND_SECRETS.md) §3e.
+
+**A tripped guard is a 422 naming the schema's first field**, byte-identical to a validation refusal,
+so a bot cannot read the guard off the response. The only thing that tells them apart is forge's
+`Submission refused by a bot guard` warn, carrying `guard` and `reason`. Read the log, not the
+response, when a local submission refuses — that is exactly what hid `bug-260908-17`, and
+`tests/workerd/contact.test.ts` now pins both halves.
 
 ### 3c. Bot-Check Ordering
 
@@ -214,7 +230,7 @@ the `<form>` element. HTMX includes all form fields in the POST body automatical
 
 ### 4c. csrfVerifyGuard in the Handler
 
-`csrfVerifyGuard` (part of `contactGuard`) reads `__csrf` from the form data and
+`csrfVerifyGuard` (the last of the route's five guards) reads `__csrf` from the form data and
 verifies it against the action path and the signing key. A missing, expired, or
 path-mismatched token results in a 403 response. See
 [MIDDLEWARE_AND_CONTEXT.md](./MIDDLEWARE_AND_CONTEXT.md) §3c for guard composition
@@ -224,7 +240,7 @@ details.
 
 ## 5. Validate-at-Boundary Rule
 
-See [`BOUNDARIES.md`](../governance/BOUNDARIES.md) §3 for the validate-at-boundary rule and the
+See `BOUNDARIES.md` §3 for the validate-at-boundary rule and the
 ordered validation steps. The schema and guards each step calls are §1–§4 above.
 
 ---

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+
 import app from "../src/worker";
 
 const MOCK_ASSETS = { fetch: async () => new Response("", { status: 200 }) } as unknown as Fetcher;
@@ -6,7 +7,7 @@ const MOCK_ASSETS_404 = { fetch: async () => new Response("Not Found", { status:
 
 const MINIMUM_ENV = {
   ASSETS: MOCK_ASSETS,
-  BASE_URL: "https://example.com",
+  SITE_ORIGIN: "https://example.com",
   CSRF_SECRET: "de7bf4aef360e3a4c3254c9cec7e45d0f1fd98cc2219c62b5b07e826ba1bcc6e",
   EMAIL_API_KEY: "test-api-key",
   EMAIL_FROM: "from@example.com",

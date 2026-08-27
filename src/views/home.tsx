@@ -1,7 +1,8 @@
 /** @jsxImportSource @y-core/forge/jsx */
 
 import { CoreIcon } from "@assets";
-import { Form, FormField, Honeypot, Input, Textarea, Turnstile } from "@y-core/forge/ui/core";
+import { Button, Card, Form, FormField, Honeypot, Input, Spinner, Textarea, Turnstile } from "@y-core/forge/ui/core";
+
 import type { RenderContext } from "../app/context";
 import { CONTACT_DECOY } from "../controllers/actions/contact";
 import type { HomeContent } from "../model/home.content";
@@ -21,22 +22,18 @@ export function HomeView({ ctx, content }: HomeViewProps) {
         {/* Section 1: Hero */}
         <section id='home' class='mx-auto grid max-w-7xl items-center gap-12 px-6 py-16 lg:grid-cols-2 lg:px-10 lg:py-24'>
           <div class='space-y-8'>
-            <p class='text-sm font-semibold uppercase tracking-[0.3em] text-primary'>Digital Product Studio</p>
+            <p class='text-sm font-semibold tracking-eyebrow text-primary uppercase'>Digital Product Studio</p>
             <div class='space-y-5'>
-              <p class='max-w-xl font-display text-4xl leading-tight text-foreground sm:text-5xl'>{content.hero.headline}</p>
-              <p class='max-w-lg text-base leading-relaxed text-muted-foreground'>{content.hero.subtext}</p>
+              <p class='max-w-xl font-serif text-4xl leading-tight text-balance text-foreground sm:text-5xl'>{content.hero.headline}</p>
+              <p class='max-w-lg text-base leading-relaxed text-pretty text-muted-foreground'>{content.hero.subtext}</p>
             </div>
             <div class='flex flex-wrap justify-center gap-4 lg:justify-start'>
-              <a
-                href='#contact'
-                class='rounded-full bg-primary px-8 py-3.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90'>
-                {content.hero.ctaPrimaryLabel}
-              </a>
-              <a
-                href='#contact'
-                class='rounded-full border border-input px-8 py-3.5 text-sm font-semibold text-foreground transition hover:bg-accent'>
-                {content.hero.ctaSecondaryLabel}
-              </a>
+              <Button asChild={true} size='lg'>
+                <a href='#contact'>{content.hero.ctaPrimaryLabel}</a>
+              </Button>
+              <Button asChild={true} size='lg' tone='neutral' appearance='outline'>
+                <a href='#contact'>{content.hero.ctaSecondaryLabel}</a>
+              </Button>
             </div>
           </div>
         </section>
@@ -47,7 +44,7 @@ export function HomeView({ ctx, content }: HomeViewProps) {
             <div class='grid items-start gap-12 lg:grid-cols-2'>
               <div class='space-y-8'>
                 <div>
-                  <h2 class='font-display text-4xl text-foreground'>{content.contact.heading}</h2>
+                  <h2 class='font-serif text-4xl text-balance text-foreground'>{content.contact.heading}</h2>
                   <p class='mt-4 text-lg leading-8 text-muted-foreground'>{content.contact.intro}</p>
                   <p class='mt-3 text-sm text-primary'>{content.contact.trust}</p>
                 </div>
@@ -67,7 +64,7 @@ export function HomeView({ ctx, content }: HomeViewProps) {
                 </div>
               </div>
 
-              <div class='rounded-2xl border border-border bg-card p-8 shadow-sm'>
+              <Card class='p-8'>
                 <Form
                   data-ref='contact-form'
                   class='space-y-5'
@@ -79,7 +76,7 @@ export function HomeView({ ctx, content }: HomeViewProps) {
                   novalidate={true}
                   csrfToken={csrfToken}>
                   {/* `Form` stopped rendering a decoy at forge 0.0.80 — it did so unconditionally,
-                      leaking `?__surname=` into every `method="get"` form's links and Referer. It is
+                      leaking the field into every `method="get"` form's links and Referer. It is
                       composed explicitly here, and its name is named again by the action's `honeypot:`. */}
                   <Honeypot field={CONTACT_DECOY} />
                   <FormField name='name'>
@@ -120,23 +117,23 @@ export function HomeView({ ctx, content }: HomeViewProps) {
                     <FormField.Error />
                   </FormField>
                   <div class='flex flex-col items-center gap-4 lg:items-start'>
-                    <button
-                      data-ref='contact-submit'
-                      class='flex items-center gap-2 rounded-full bg-primary px-6 py-3.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50'
-                      type='submit'>
+                    <Button data-ref='contact-submit' type='submit' size='lg'>
                       Send Message
+                      {/* The indicator is CSS-driven by htmx, so it stays a wrapped `Spinner` rather
+                          than `Button`'s `loading` prop — a server-render-time boolean. */}
                       <span id='form-spinner' class='htmx-indicator' aria-hidden='true'>
-                        <CoreIcon name='spinner' class='h-4 w-4 animate-spin' />
+                        <Spinner icon={CoreIcon} size='sm' />
                       </span>
-                    </button>
+                    </Button>
                     {/* Deliberately omits Cloudflare's `cf-turnstile` auto-render class — `mountTurnstile()`
                         owns rendering, so the widget lifecycle is deterministic. Inside the `<form>` so the
                         token input Turnstile injects is submitted with it. */}
                     {turnstileSiteKey && <Turnstile siteKey={turnstileSiteKey} size='normal' />}
                   </div>
                 </Form>
+                {/* oxlint-disable-next-line forge/a11y-one-live-region -- the only other region on this page is `Spinner`'s `role="status"`, and it sits inside the `aria-hidden` indicator wrapper above, so it never reaches the accessibility tree. This is the page's one live region; the rule reads the markup statically and cannot see the hidden ancestor. */}
                 <div data-ref='contact-result' id='contact-result' class='mt-4' aria-live='polite'></div>
-              </div>
+              </Card>
             </div>
           </div>
         </section>

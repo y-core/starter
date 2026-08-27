@@ -12,6 +12,8 @@
 bin/
 coverage/
 node_modules/
+playwright-report/
+test-results/
 public/
 tmp/
 
@@ -29,7 +31,6 @@ tmp/
 .ripgreprc
 .idea
 .vscode
-.claude/commands
 .claude/hooks
 .claude/launch.json
 .claude/routines
