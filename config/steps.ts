@@ -5,7 +5,7 @@
  *  is sufficient for a Worker app, so a row added here that the preset does not emit is a bug
  *  report against the preset rather than a local convenience. The four warden rows are the standing
  *  exception, and not a bug report: the preset cannot import warden, so they have to be appended
- *  here. `workerdStep` is appended too, and *is* a bug report — see the comment on the row.
+ *  here.
  *
  *  `sources` names `config/` because this file is inside the gate it defines; `tests` stays at its
  *  default, which is already the whole suite.
@@ -18,7 +18,7 @@
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { cloudflareWorkerSteps, type Step, workerdStep } from "@y-core/forge/tooling/gate";
+import { cloudflareWorkerSteps, type Step } from "@y-core/forge/tooling/gate";
 import { CANON_ROOT } from "@y-core/forge/warden";
 import { docsStep, duplicatesStep, wardenQueriesStep, wardenStep } from "@y-core/forge/warden/steps";
 
@@ -28,14 +28,10 @@ import { GOLDEN, NEGATIVE } from "./golden";
 /** This repository's root, derived from this file rather than from `process.cwd()`. */
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-// Unused while `package.json` pins a released tarball, and kept for the swap to
-// `"@y-core/forge": "file:../forge"` that verifies a cross-repo change before forge cuts a release.
-// bun *links* a `file:` dependency and realpaths an imported module — though not the entry point —
-// so forge's own `app-root.ts` sees its checkout with no `node_modules` above it, and
-// `resolveAppRoot`'s derived branch refuses. The preset's `types:assets` row passes no `--root`, but
-// it inherits this process's environment, and `FORGE_APP_ROOT` is the escape hatch `forge assets`
-// already publishes for exactly this. It belongs here and not in forge: a released library should
-// carry no resolution branch for an install shape production never uses.
+// `cloudflareWorkerSteps` defaults `root` to `process.cwd()`, which is whatever directory the gate
+// was invoked from. Pinning it to this file's repository makes every row address the same tree no
+// matter where it was started, and `FORGE_APP_ROOT` is the escape hatch `forge assets` publishes
+// for exactly that. `??=` so an explicitly exported root still wins.
 process.env.FORGE_APP_ROOT ??= ROOT;
 
 /** The installed canon, addressed relative to this repository so `citableDirs` can name its trees. */
@@ -51,15 +47,13 @@ export const STEPS: readonly Step[] = [
     assetConfig: "config/assets.ts",
     workerConfig: "wrangler.jsonc",
     warden: true,
+    db: true,
     browser: true,
+    workerd: true,
     // `design.sources` stays defaulted to `["src/"]`: the top-level `sources` above names `tests/`,
     // whose specs hold deliberately self-conflicting class literals `validate-class-order` would fail.
     design: { stylesheet: "src/assets/tailwind.css", cssDir: "src/assets" },
   }),
-  // Temporary. `cloudflareWorkerSteps()` gates `test:browser` behind `browser?: boolean` and offers
-  // no symmetric `workerd?: boolean`, so this row is a bug report against the preset rather than a
-  // local convenience — delete it once the preset emits the row itself.
-  workerdStep(),
   docsStep({
     root: ROOT,
     packageName: pkg.name,

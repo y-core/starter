@@ -29,6 +29,7 @@
     "forge/platform-text-pretty": "error",
     "forge/reduced-motion": "error",
     "forge/spacing-scale-only": "error",
+    "forge/sql-explicit-transaction": "error",
     "typescript/no-explicit-any": "error",
     "typescript/no-non-null-assertion": "error",
     "eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_", "ignoreRestSiblings": true }],

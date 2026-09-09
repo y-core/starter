@@ -10,6 +10,7 @@
    `.ts` files. */
 @source "../../node_modules/@y-core/forge/src/logging";
 @source "../../node_modules/@y-core/forge/src/ui/show";
+@source "../../node_modules/@y-core/forge/src/auth";
 
 @theme {
   --font-serif: Georgia, "Times New Roman", serif;

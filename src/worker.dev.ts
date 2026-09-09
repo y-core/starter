@@ -1,7 +1,9 @@
 import { mergeSecurityHeaders } from "@y-core/forge/security";
 
+import { purgeAuthStores } from "./app/auth";
 import { securityHeaders } from "./app/config";
 import { turnstileHostname } from "./app/middleware";
+import type { AppEnv } from "./app/types";
 import { routes } from "./routes";
 import { createWorker } from "./worker";
 
@@ -15,10 +17,17 @@ const WRANGLER_LIVE_RELOAD_HASH = "'sha256-g5a3SrOYIecCloZ8S7M4xdT1pbYi6e7mjHrmw
  * development needs and production must not have: the Wrangler live-reload script hash on the CSP,
  * and `TURNSTILE_DEV_HOSTNAME` published to the submission pipeline. The prod entry (worker.ts)
  * references neither, so neither can reach production. */
-const app = createWorker(mergeSecurityHeaders(securityHeaders, { scriptSrc: [WRANGLER_LIVE_RELOAD_HASH] }));
+export const devApp = createWorker(mergeSecurityHeaders(securityHeaders, { scriptSrc: [WRANGLER_LIVE_RELOAD_HASH] }));
 
 // After `createWorker` has mapped the routes, which is fine: `Forge.use` collects into a list the
 // router reads when it is built, on the first request.
-app.use(routes.contact.href(), turnstileHostname);
+devApp.use(routes.contact.href(), turnstileHostname);
 
-export default app;
+// The same two-entry module the production worker exports, so dev and production stay structurally
+// identical and the cron is exercised by the entry development actually runs.
+export default {
+  fetch: (request: Request, env: AppEnv, ctx: ExecutionContext) => devApp.fetch(request, env, ctx),
+  scheduled: async (_event: ScheduledController, env: AppEnv, _ctx: ExecutionContext) => {
+    await purgeAuthStores(env);
+  },
+};

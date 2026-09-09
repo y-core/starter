@@ -24,7 +24,7 @@ description: "The route map, the controller binding, the guard checklist a new r
 - §3a /api/contact — HTMX-Only POST Action
 - §3b Guard Order
 - §3c handleContact
-- §4 Home: GET /, csrfVerifyGuard mints token, definePage + renderPage
+- §4 Home: GET /, csrfVerifyGuard mints token, definePage + renderShell
 - §4a GET / — Full Page with Contact Form
 - §4b Why csrfVerifyGuard on GET
 - §4c homeController Structure
@@ -90,10 +90,10 @@ stays inline as a forge factory.
 
 Each entry in `createController`'s `actions` map is either:
 
-| Shape | Purpose |
-|---|---|
+| Shape                            | Purpose                                                           |
+| -------------------------------- | ----------------------------------------------------------------- |
 | `RequestHandler` (bare function) | a forge factory (`healthCheck(...)`) or a bare controller handler |
-| `{ middleware, handler }` | a controller module — middleware array applied before the handler |
+| `{ middleware, handler }`        | a controller module — middleware array applied before the handler |
 
 Middleware arrays contain `Middleware` values (guards). The handler is a `RequestHandler`.
 See [ARCHITECTURE_GUIDE.md](./ARCHITECTURE_GUIDE.md) §6 for the handler patterns.
@@ -146,13 +146,13 @@ Guards run left to right. Order is load-bearing:
 
     [requireFormContentType(), htmxOnlyGuard, originGuard, rateLimitGuard, csrfVerifyGuard]
 
-| Position | Guard | Rejects on |
-|---|---|---|
-| 1 | `requireFormContentType()` | `Content-Type` is not a form encoding (415) |
-| 2 | `htmxOnlyGuard` | Missing `HX-Request` (403) |
-| 3 | `originGuard` | Cross-site `Sec-Fetch-Site`, or an `Origin`/`Referer` outside the allowlist (403) |
-| 4 | `rateLimitGuard` | Too many requests from this IP (429) |
-| 5 | `csrfVerifyGuard` | Missing or invalid `__csrf` token (403) |
+| Position | Guard                      | Rejects on                                                                        |
+| -------- | -------------------------- | --------------------------------------------------------------------------------- |
+| 1        | `requireFormContentType()` | `Content-Type` is not a form encoding (415)                                       |
+| 2        | `htmxOnlyGuard`            | Missing `HX-Request` (403)                                                        |
+| 3        | `originGuard`              | Cross-site `Sec-Fetch-Site`, or an `Origin`/`Referer` outside the allowlist (403) |
+| 4        | `rateLimitGuard`           | Too many requests from this IP (429)                                              |
+| 5        | `csrfVerifyGuard`          | Missing or invalid `__csrf` token (403)                                           |
 
 `BOUNDARIES.md` §2c order: request shape, then origin, then rate limit, then CSRF. The first three are
 header inspection with no crypto, so they are cheapest. Rate limiting runs before CSRF to avoid
@@ -167,8 +167,8 @@ There is no method check: `routes.contact` is `post(...)`, so the router answers
 ### 3c. handleContact
 
 Defined in `src/controllers/actions/contact.ts`. After the guards pass, the handler reads the form body
-via `parseFormData(c)`, checks the honeypot field (`isHoneypotFilled`), verifies the Turnstile
-token, and validates the fields with `validateContact`. On success it returns an HTMX-compatible
+via `parseFormData(c)`, verifies the Turnstile token, and validates the fields with
+`validateContact`. On success it returns an HTMX-compatible
 HTML fragment wrapped in `fragmentResponse(renderSuccess(...))`. On validation failure it returns
 `fragmentResponse(renderValidationErrors(...), 422)`. It never redirects — the form swap is
 handled client-side by HTMX hx-swap.
@@ -208,14 +208,19 @@ See [MIDDLEWARE_AND_CONTEXT.md](./MIDDLEWARE_AND_CONTEXT.md) §3c for the guard 
           ctx: await renderContext(c, config, routes.contact.href()),
           content,
         }),
-        view: (_c, _cfg, state) =>
-          renderPage(<HomeView ctx={state.data.ctx} content={state.data.content} />),
+        view: (c, _cfg, state) =>
+          renderShell(c, <HomeView ctx={state.data.ctx} content={state.data.content} />, {
+            mount: "app",
+            page: "home",
+            meta: { title: site.title },
+          }),
       }),
     }
 
-The `loader` marshals a `RenderContext` (`ctx`) — providing the CSRF token, nonce, and
-Turnstile site key — and the `view` calls `renderPage()` from `@y-core/forge/jsx` to
-convert the JSX to an `HtmlResponse`. `cache: "no-store"` sets the Cache-Control header.
+The `loader` marshals a `RenderContext` (`ctx`) — this is the one page that still needs its own,
+for the CSRF token and the Turnstile site key — and the `view` calls `renderShell()` from
+`@y-core/forge/app`, which renders the content through the registered shell and returns an
+`HtmlResponse`. `cache: "no-store"` sets the Cache-Control header.
 `routes.contact.href()` returns `"/api/contact"` from the typed route map, keeping the CSRF
 path in sync with the route definition.
 
@@ -232,9 +237,10 @@ path in sync with the route definition.
     logs: showLogsController   // defined in src/controllers/show.logs.tsx
 
 `showLogsController` is a `definePage` handler in `src/controllers/show.logs.tsx`. Its
-`loader` calls `loadLogViewer(c, config, { channel, access, icon, context, layout, basePath })`
-from `@y-core/forge/logging/show`, which returns a fully rendered `Response` for every path; its
-`view` is a pass-through. There is no separate `logs.tsx` view component — the log viewer UI is
+`loader` calls `loadLogViewer(c, { channel, access, icon, basePath })` from
+`@y-core/forge/logging/show`, which returns a fully rendered `Response` for every path; its `view`
+is a pass-through. The viewer reaches this app's chrome through the registered shell, not through
+anything the call passes. There is no separate `logs.tsx` view component — the log viewer UI is
 provided by forge.
 
 ### 5b. Access Control
@@ -262,9 +268,9 @@ When adding any new route, complete all items before marking done:
 - [ ] POST/action routes: include `csrfVerifyGuard` in the middleware array
 - [ ] HTMX-only POST routes: open with `requireFormContentType()`, `htmxOnlyGuard` and `originGuard`, in that order
 - [ ] `/admin/*` routes: add auth middleware or document `// TODO(auth)` with a tracking note
-- [ ] Full-page controllers: use `definePage({ loader, view })` in `src/controllers/`; `loader` marshals `renderContext` + data; `view` calls `renderPage(<View ctx={ctx} … />)` from `@y-core/forge/jsx`
+- [ ] Full-page controllers: use `definePage({ loader, view })` in `src/controllers/`; `loader` marshals the page's data; `view` calls `renderShell(c, <View … />, { mount: "app", page, meta })` from `@y-core/forge/app`
 - [ ] Fragment handlers: use `fragmentResponse(renderSuccess(...))` / `renderValidationErrors`
-- [ ] New view component defined in `src/views/` (page views own `<Layout>`; not inline in the controller)
+- [ ] New view component defined in `src/views/`, returning a `<main>` — never a `<Layout>`, which is the shell's
 - [ ] New route covered by a test in `tests/` (status + security headers)
 - [ ] Run `bun run verify` — generated types, typecheck, lint, and tests must all pass
 

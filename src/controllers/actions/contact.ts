@@ -5,19 +5,12 @@ import { createMiddleware } from "@y-core/forge/router";
 import { requireFormContentType } from "@y-core/forge/security";
 import { formMultilineText, formText, strictObject, v } from "@y-core/forge/validation";
 
-import type { AppConfig } from "../../app/config";
-import { type AppEnv, turnstileHostnameCtx } from "../../app/context";
+import { turnstileHostnameCtx } from "../../app/context";
 import { csrfVerifyGuard, htmxOnlyGuard, originGuard, rateLimitGuard } from "../../app/middleware";
+import type { AppConfig, AppEnv } from "../../app/types";
 import { sendContactEmail } from "../../services/email";
 
 const SUCCESS_MESSAGE = "Thanks. We'll review your note and get back to you soon.";
-
-/**
- * The decoy field name, referenced exactly twice: by `<Honeypot field={CONTACT_DECOY} />` in the
- * view and by `honeypot:` below. Deliberately not forge's `HONEYPOT_FIELD_DEFAULT` — forge is open
- * source, so a published default name is a one-line bypass for every deployment at once.
- */
-export const CONTACT_DECOY = "company";
 
 const MAX_NAME_LENGTH = 100;
 const MAX_EMAIL_LENGTH = 254;
@@ -69,16 +62,13 @@ export const ContactSchema = strictObject({
   ),
 });
 
-export type ContactSubmission = v.InferOutput<typeof ContactSchema>;
-
 /**
- * The pipeline owns the body read, the decoy check, Turnstile verification, the drop of every
- * consumed field (`_csrf` via `csrfFieldCtx`, the decoy and `cf-turnstile-response` because they are
- * named here) and the parse. `handle` is unreachable except through a passing `v.safeParse`.
+ * The pipeline owns the body read, Turnstile verification, the drop of every consumed field (`_csrf`
+ * via `csrfFieldCtx`, and `cf-turnstile-response` because it is named here) and the parse. `handle`
+ * is unreachable except through a passing `v.safeParse`.
  */
 export const contactAction = defineAction<typeof ContactSchema, AppEnv, AppConfig>({
   schema: ContactSchema,
-  honeypot: CONTACT_DECOY,
   turnstile: {
     secretKey: (_c, config) => config.services.turnstile.secretKey,
     // The site origin's hostname is the only comparison production ever makes: nothing sets

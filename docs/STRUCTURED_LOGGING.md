@@ -26,7 +26,7 @@ description: "The channels this app installs, KV log persistence, request-id cor
 - §4 Admin Log Viewer: `/showcase/logs` route, `showLogsController` with `loadLogViewer` from forge
 - §4a /showcase/logs Route Wiring
 - §4b Access Control — debug-gated, fail-closed
-- §5 No-PII rule: log only method, path, status, duration, requestId
+- §5 What this app is allowed to log: the closed field set at §3b, and why the viewer is still gated
 
 ---
 
@@ -106,11 +106,11 @@ for support correlation. Never include it in HTML fragment responses visible to 
 
 `requestLogger` derives the log level from the HTTP response status automatically:
 
-| Status range | Level  | Meaning                  |
-| ------------ | ------ | ------------------------ |
-| < 400        | INFO   | Successful request       |
-| 400 – 499    | WARN   | Client error             |
-| >= 500       | ERROR  | Server / infra error     |
+| Status range | Level | Meaning              |
+| ------------ | ----- | -------------------- |
+| < 400        | INFO  | Successful request   |
+| 400 – 499    | WARN  | Client error         |
+| >= 500       | ERROR | Server / infra error |
 
 No manual level selection is needed for request logs. For structured application events
 (non-request logs) use the channel directly:
@@ -149,13 +149,11 @@ Additional fields from `bindings` are merged at the top level.
     import { CoreIcon } from "@assets"
 
     export const showLogsController = definePage<AppEnv, AppConfig, Response>({
-      loader: (c, config) =>
-        loadLogViewer(c, config, {
+      loader: (c, _config) =>
+        loadLogViewer(c, {
           channel: (cc) => kvLogChannel(cc.env.LOGS_KV),
           access: (cc) => configStore.get(cc.env).site.debug,
           icon: CoreIcon,
-          context: renderContext,
-          layout: Layout,
           basePath: routes.showcase.logs.href(),
         }),
       view: (_c, _cfg, state) => state.data,
@@ -166,7 +164,9 @@ parameters for filter and cursor-based pagination. It returns a fully rendered `
 every path — the full page, the `<tbody>` HTMX partial, the `<tr>` cursor page and the detail
 cell — because the record-rendering components are internal. A loader returning a `Response`
 short-circuits rendering, so the `view` is a pass-through and there is no separate view component
-in the app. `context` and `layout` hand the viewer this app's shell.
+in the app. The viewer builds no document of its own — it renders through the shell `worker.ts`
+registers, which is what puts it inside the `<html>` carrying the dark class and the pre-paint theme
+script.
 
 ### 4b. Access Control — debug-gated, fail-closed
 
@@ -180,7 +180,16 @@ flag is the whole control, and it is fail-closed by default rather than by remem
 
 ---
 
-## 5. No-PII Rule
+## 5. What This App Is Allowed to Log
 
-See `BOUNDARIES.md` §4 for the no-PII rule, the prohibited field
-classes, and structured fields over string interpolation.
+`BOUNDARIES.md` §4 states the no-PII rule and the field classes it prohibits. **This app narrows it
+to a closed set**: the seven fields at §3b, plus whatever `bindings` merges — and `bindings` merges
+`requestId` and nothing else (§1a). Any other field is a change to that one factory in
+`src/app/middleware.ts`, which is the single place to review a new field against the rule.
+
+Two consequences worth stating, because both are easy to reach by accident:
+
+- **The contact submission is never logged**, not even redacted. `sendContactEmail` receives the
+  submitter's name, email and message; it logs the outcome, not the payload.
+- **`/showcase/logs` is a PII surface even so**, because request paths and error messages reach KV.
+  That is why §4b gates it fail-closed rather than trusting the field set alone.

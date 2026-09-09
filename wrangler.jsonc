@@ -11,19 +11,7 @@
   "assets": {
     "binding": "ASSETS",
     "directory": "./public",
-    // The Worker runs first for every path, except the six files `icons.outputs` writes to the
-    // asset root — those are served straight off the asset layer. `validate-asset-root` holds the
-    // two halves of this coupling in sync: a new root-level output added to `config/assets.ts`
-    // without its `!` rule here fails the gate.
-    "run_worker_first": [
-      "/*",
-      "!/favicon.ico",
-      "!/favicon.svg",
-      "!/apple-touch-icon.png",
-      "!/icon-192.png",
-      "!/icon-512.png",
-      "!/site.webmanifest"
-    ],
+    "run_worker_first": ["/*", "!/static/*", "!/favicon.ico"],
     "not_found_handling": "none"
   },
   "kv_namespaces": [
@@ -31,8 +19,25 @@
       "binding": "LOGS_KV",
       "id": "logs_kv_local",
       "preview_id": "logs_kv_local"
+    },
+    {
+      "binding": "AUTH_KV",
+      "id": "auth_kv_local",
+      "preview_id": "auth_kv_local"
     }
   ],
+  "d1_databases": [
+    {
+      "binding": "AUTH_DB",
+      "database_name": "forge-starter-auth",
+      "database_id": "auth_db_local"
+    }
+  ],
+  // Hourly, because the purge is housekeeping: every read already holds a row against the clock, so
+  // an expired challenge or nonce is inert long before this reclaims its space.
+  "triggers": {
+    "crons": ["0 * * * *"]
+  },
   "ratelimits": [
     {
       "name": "RATE_LIMITER",

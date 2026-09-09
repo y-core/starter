@@ -1,10 +1,9 @@
 import { escapeHtml } from "@y-core/forge/http";
 import type { Logger } from "@y-core/forge/logging";
 
-import type { EmailConfig } from "../app/config";
-import type { ContactSubmission } from "../controllers/actions/contact";
-
-export type EmailResult = { ok: true } | { ok: false; reason: string };
+import type { EmailConfig } from "../app/types";
+import type { ContactSubmission } from "../controllers/types";
+import type { EmailResult } from "./types";
 
 export async function sendContactEmail(submission: ContactSubmission, email: EmailConfig, logger: Logger): Promise<EmailResult> {
   const { apiKey, apiUrl, from, senderName, to } = email;

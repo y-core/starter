@@ -14,5 +14,3 @@ export const content = {
     contacts: [{ name: "Forge Studio", phone: "+1 (555) 012-3456", email: "hello@example.com" }],
   },
 } as const;
-
-export type HomeContent = typeof content;

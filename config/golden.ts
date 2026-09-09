@@ -14,7 +14,7 @@
  *  Every canon document must be top-1 for at least one query — that assertion is what stops the set
  *  decaying into a fixture nobody rereads — and this repository's own thirteen documents are held
  *  the same way, since a ruling nobody can find is a ruling nobody follows. The installed library's
- *  documents are held by the last four entries alone: the coverage assertion never reaches them.
+ *  documents are held by the last five entries alone: the coverage assertion never reaches them.
  */
 
 import type { GoldenQuery } from "@y-core/forge/warden";
@@ -22,7 +22,6 @@ import type { GoldenQuery } from "@y-core/forge/warden";
 /** Every question the index must answer, with the section that must come back. @public */
 export const GOLDEN: readonly GoldenQuery[] = [
   // The fleet canon — one per document at least, phrased as the question a reader actually types.
-  { query: "where does a guard on a route go", expect: "canon:APP_ARCHITECTURE.md#5a", dimension: "placement" },
   { query: "what may a view import", expect: "canon:APP_ARCHITECTURE.md#2b", dimension: "boundary" },
   { query: "middleware ordering and where a guard is declared", expect: "canon:BOUNDARIES.md#2b", dimension: "placement" },
   { query: "no PII in a log line", expect: "canon:BOUNDARIES.md#4a", dimension: "prohibition" },
@@ -45,12 +44,12 @@ export const GOLDEN: readonly GoldenQuery[] = [
   { query: "where is SITE_ORIGIN declared", expect: "project:docs/CONFIGURATION_AND_SECRETS.md#3d", dimension: "placement" },
   { query: "how do I generate the CSRF_SECRET", expect: "project:docs/CONFIGURATION_AND_SECRETS.md#6c", dimension: "procedure" },
   { query: "sql tagged template parameterized query", expect: "project:docs/DATA_STORAGE.md#3b", dimension: "procedure" },
+  { query: "declare which schema files forge db reads", expect: "project:docs/DATA_STORAGE.md#3c", dimension: "placement" },
   { query: "one binding shape check per isolate", expect: "project:docs/DATA_STORAGE.md#5b", dimension: "procedure" },
   { query: "never mix renderPage with an HTMX fragment route", expect: "project:docs/ERROR_HANDLING.md#2b", dimension: "prohibition" },
   { query: "minting a CSRF token in a test", expect: "project:docs/HANDLER_TESTING.md#4a", dimension: "procedure" },
-  { query: "no 200 on a guard failure", expect: "project:docs/HANDLER_TESTING.md#6e", dimension: "prohibition" },
-  { query: "the honeypot field", expect: "project:docs/INPUT_VALIDATION.md#3a", dimension: "procedure" },
-  { query: "turnstile captcha verification", expect: "project:docs/INPUT_VALIDATION.md#3b", dimension: "procedure" },
+  { query: "no 200 on a guard failure", expect: "project:docs/HANDLER_TESTING.md#6d", dimension: "prohibition" },
+  { query: "turnstile captcha verification", expect: "project:docs/INPUT_VALIDATION.md#3a", dimension: "procedure" },
   { query: "requestId propagation to downstream services", expect: "project:docs/MIDDLEWARE_AND_CONTEXT.md#1c", within: 4, dimension: "procedure" },
   { query: "the mintCsrf scope", expect: "project:docs/MIDDLEWARE_AND_CONTEXT.md#4c", dimension: "boundary" },
   // Named by this repository's own file. Asked bare, "binding a controller to a route" is answered
@@ -69,6 +68,9 @@ export const GOLDEN: readonly GoldenQuery[] = [
   // The installed library's own documents, served here because the warden rows pass `dependency`.
   // The coverage assertion reaches only the canon, so nothing but these holds the third corpus: a
   // question whose answer is the library's and nowhere else, one per shape of that question.
+  // A placement question resolves here because the mechanism is the library's — the `createController`
+  // action object — and this repository's own `MIDDLEWARE_AND_CONTEXT.md` §3 defers to it.
+  { query: "where does a guard on a route go", expect: "dependency:forge/ROUTING_AND_MIDDLEWARE.md#1b", dimension: "placement" },
   { query: "are hx attributes sanitized by forge", expect: "dependency:forge/HTMX.md#7a", dimension: "rationale" },
   {
     query: "why does a component emit both aria-pressed and data-pressed",

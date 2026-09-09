@@ -1,11 +1,11 @@
 ---
 title: Input Validation
-description: "The contact schema, field reading, honeypot and Turnstile wiring, and the CSRF configuration this app uses."
+description: "The contact schema, field reading, Turnstile wiring, and the CSRF configuration this app uses."
 ---
 
 # Input Validation
 
-> Validation schemas, form parsing, honeypot, and Turnstile in the starter app.
+> Validation schemas, form parsing, and Turnstile in the starter app.
 > Complements [ERROR_HANDLING.md](./ERROR_HANDLING.md) (renderValidationErrors),
 > [MIDDLEWARE_AND_CONTEXT.md](./MIDDLEWARE_AND_CONTEXT.md) §3c (csrfVerifyGuard).
 
@@ -21,15 +21,14 @@ description: "The contact schema, field reading, honeypot and Turnstile wiring, 
 - §2a Full Handler Parse Sequence
 - §2b parseFormData vs. c.request.formData
 - §2c readFields Returns a String Record
-- §3 Bot protection: honeypot check before CSRF and Turnstile CAPTCHA
-- §3a Honeypot Field
-- §3b Turnstile CAPTCHA Verification
-- §3c Bot-Check Ordering
+- §3 Bot protection: CSRF and Turnstile CAPTCHA
+- §3a Turnstile CAPTCHA Verification
+- §3b Bot-Check Ordering
 - §4 CSRF token: `mintCsrf` in `renderContext` → hidden input in form → `csrfVerifyGuard`
 - §4a csrfPath → renderContext → CSRF token
 - §4b CSRF Hidden Input in Form
 - §4c csrfVerifyGuard in the Handler
-- §5 Validate-at-boundary rule: handler validates, service receives typed data only
+- §5 Where the boundary is in this app: the one POST action; services receive `ContactSubmission` only
 - §6 `v` namespace facade: import exclusively from `@y-core/forge/validation`, never valibot directly
 - §6a Import from Forge, Never from Valibot Directly
 - §6b Available Utilities via v
@@ -93,37 +92,34 @@ blank".
 
 The complete sequence in a POST action handler:
 
-    import { parseFormData, readFields, isHoneypotFilled } from "@y-core/forge/form"
-    import { renderError, renderValidationErrors } from "@y-core/forge/http"
+    import { parseFormData, readFields } from "@y-core/forge/form"
+    import { renderValidationErrors } from "@y-core/forge/http"
     import { v } from "@y-core/forge/validation"
     import { ContactSchema, type ContactInput } from "../model/contact"
 
     const formData = await parseFormData(c)
 
-    // 1. Bot check — earliest possible rejection
-    if (isHoneypotFilled(formData)) return renderError(c, "Invalid submission", { status: 400 })
-
-    // 2. CSRF verification — already done by `csrfVerifyGuard` in the route's
+    // 1. CSRF verification — already done by `csrfVerifyGuard` in the route's
     //    middleware list, so the handler is unreachable with an unverified token (see §4)
 
-    // 3. Extract fields as string record
+    // 2. Extract fields as string record
     const fields = readFields(formData, ["name", "email", "message"] as const)
 
-    // 4. Parse and validate
+    // 3. Parse and validate
     const parsed = v.safeParse(ContactSchema, fields, { abortEarly: true })
     if (!parsed.success) return renderValidationErrors(c, parsed.issues)
 
-    // 5. Typed output — safe to pass to service
+    // 4. Typed output — safe to pass to service
     const contact: ContactInput = parsed.output
 
-Steps 1–2 reject bots and forged requests before any validation work occurs. Steps 3–5
-are the validation pipeline proper.
+Step 1 rejects forged requests before any validation work occurs. Steps 2–4 are the
+validation pipeline proper.
 
 ### 2b. parseFormData vs. c.request.formData
 
 Always use `parseFormData(c)` from the forge form utilities, not `c.request.formData()`
 directly. `parseFormData` accepts the request context, normalises content-type handling,
-and integrates cleanly with `readFields` and `isHoneypotFilled`.
+and integrates cleanly with `readFields`.
 
 ### 2c. readFields Returns a String Record
 
@@ -136,27 +132,12 @@ means valibot `minLength` checks naturally catch absent fields without a separat
 
 ## 3. Bot Protection
 
-### 3a. Honeypot Field
-
-The honeypot pattern adds a hidden form field that bots fill in but humans leave blank.
-`isHoneypotFilled` checks the field named by `HONEYPOT_FIELD_DEFAULT` (default: `"__hp"`):
-
-    if (isHoneypotFilled(formData)) return renderError(c, "Invalid submission", { status: 400 })
-
-Add the honeypot input to every form that submits to an action handler. Style it hidden
-via CSS (not `type="hidden"` which bots ignore, but `display:none` or position off-screen):
-
-    <input type="text" name="__hp" tabIndex={-1} aria-hidden="true" class="sr-only" />
-
-Check the honeypot before CSRF and Turnstile to avoid unnecessary cryptographic work on
-bot submissions.
-
-### 3b. Turnstile CAPTCHA Verification
+### 3a. Turnstile CAPTCHA Verification
 
 Turnstile is Cloudflare's bot-detection CAPTCHA. The widget renders client-side and
 posts a `cf-turnstile-response` token with the form. The handler verifies it server-side:
 
-The action declares it; the pipeline calls it, before the parse and after the honeypot:
+The action declares it; the pipeline calls it, before the parse:
 
     turnstile: {
       secretKey: (_c, config) => config.services.turnstile.secretKey,
@@ -184,15 +165,14 @@ so a bot cannot read the guard off the response. The only thing that tells them 
 response, when a local submission refuses — that is exactly what hid `bug-260908-17`, and
 `tests/workerd/contact.test.ts` now pins both halves.
 
-### 3c. Bot-Check Ordering
+### 3b. Bot-Check Ordering
 
 The prescribed order minimises work and avoids leaking timing information:
 
-1. Honeypot (synchronous, zero cost)
-2. CSRF token (fast HMAC verify)
-3. Turnstile (async network call to Cloudflare)
-4. Schema validation (CPU-only)
-5. Service call
+1. CSRF token (fast HMAC verify)
+2. Turnstile (async network call to Cloudflare)
+3. Schema validation (CPU-only)
+4. Service call
 
 Reject at the earliest possible step.
 
@@ -238,10 +218,18 @@ details.
 
 ---
 
-## 5. Validate-at-Boundary Rule
+## 5. Where the Boundary Is in This App
 
-See `BOUNDARIES.md` §3 for the validate-at-boundary rule and the
-ordered validation steps. The schema and guards each step calls are §1–§4 above.
+`BOUNDARIES.md` §3 states the rule and the order it imposes. **In this app the boundary is the POST
+action, and `routes.contact` is the only one** — `src/controllers/actions/contact.ts`. Its
+`defineAction` takes `ContactSchema` as a field, so the handler body is unreachable except through a
+passing `v.safeParse`; everything downstream sees `ContactSubmission` and never `FormData`.
+`sendContactEmail` in `src/services/email.ts` accordingly takes that type as a parameter and
+re-validates nothing.
+
+The four steps the rule orders are §4c (CSRF), §3a (Turnstile), §2a (parse) and §1a (schema) above.
+A second action inherits all four or it is not on the boundary — adding one means a schema beside
+its handler and guards in the route's middleware list, never a check inside the handler body.
 
 ---
 

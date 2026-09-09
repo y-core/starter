@@ -1,6 +1,7 @@
 import "@y-core/forge/ui/show/client";
 // Side-effect-imports `ui/core/client` since forge 0.0.73.
 import "@y-core/forge/ui/chrome/client";
+import "@y-core/forge/auth/client";
 import { resume } from "@y-core/forge/ui/client";
 import { htmx } from "@y-core/forge/ui/client/htmx";
 

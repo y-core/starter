@@ -1,19 +1,22 @@
+import { authNav } from "@y-core/forge/auth/web";
 import type { AppContext as ForgeAppContext } from "@y-core/forge/context";
-import { contextVar } from "@y-core/forge/context";
-import { mintCsrf } from "@y-core/forge/form";
+import { contextVar, getAppContext } from "@y-core/forge/context";
+import { importCsrfKey, mintCsrf } from "@y-core/forge/form";
 import { getNonce } from "@y-core/forge/security";
 
-import type { AppConfig } from "./config";
+import { authWebPaths } from "./auth";
+import { configStore } from "./config";
+import type { AppConfig, AppEnv, RenderContext } from "./types";
 
-export interface RenderContext {
-  baseUrl?: string | undefined;
-  csrfToken: string;
-  nonce: string;
-  turnstileSiteKey?: string | undefined;
-}
-
-export type AppEnv = Env;
-export type AppContext = ForgeAppContext<AppEnv, Record<string, string>, AppConfig>;
+// Wired here rather than reached through `mintCsrf`: the navbar carries the sign-out form on every
+// page, and `authCsrfGuard` — the only minter that binds a token to the session `/auth/signout`
+// verifies against — is mounted on the auth prefixes alone. The minter a page like `/` does have is
+// `csrfVerifyGuard`'s, whose subject-less token that route would refuse. Same secret as that guard,
+// so the two cannot disagree about what they sign with.
+const resolveNav = authNav({
+  signoutPath: authWebPaths.auth.signout(),
+  secret: (context) => importCsrfKey(configStore.get(getAppContext<AppEnv, Record<string, string>, AppConfig>(context).env).security.csrf.secret),
+});
 
 /** The hostname Turnstile's siteverify answer is held against, when a development entry point has
  *  licensed one. Only `turnstileHostname` in `middleware.ts` sets it, and only `worker.dev.ts`
@@ -24,6 +27,9 @@ export const turnstileHostnameCtx = contextVar<string>("turnstileHostname");
  *  the context is used only to mint the CSRF token and read the nonce, so it is config-agnostic. */
 export async function renderContext(c: ForgeAppContext<AppEnv>, config: AppConfig, csrfPath?: string): Promise<RenderContext> {
   return {
+    // Read off the identity `resolveAuth` established against the store on this very request, so an
+    // anonymous page and a signed-in one are told apart from the same source the guards judge from.
+    nav: await resolveNav(c),
     baseUrl: config.site.url.origin,
     // Only mint a token when the caller declares the form's action path; pages without a form
     // (e.g. the 404 page) get an empty token. `mintCsrf` requires a non-empty path.

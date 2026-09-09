@@ -87,15 +87,15 @@ URL, so no tool takes a `project` argument.
 
 ## Toolchain
 
-| Tool | Role |
-|---|---|
-| `bun` | Package manager and test runner |
-| `tsc` (`typescript` 7) | Type checker |
-| `oxlint` | Linter (use instead of `eslint`) |
-| `oxfmt` | Formatter (use instead of `prettier`) |
-| `wrangler` | Cloudflare Workers dev server and deploy |
-| `forge assets` | Client bundle (esbuild), Tailwind v4 and Lucide sprite pipeline |
-| `warden` | Governing-document index, agent sync, and the MCP server over both |
+| Tool                   | Role                                                               |
+| ---------------------- | ------------------------------------------------------------------ |
+| `bun`                  | Package manager and test runner                                    |
+| `tsc` (`typescript` 7) | Type checker                                                       |
+| `oxlint`               | Linter (use instead of `eslint`)                                   |
+| `oxfmt`                | Formatter (use instead of `prettier`)                              |
+| `wrangler`             | Cloudflare Workers dev server and deploy                           |
+| `forge assets`         | Client bundle (esbuild), Tailwind v4 and Lucide sprite pipeline    |
+| `warden`               | Governing-document index, agent sync, and the MCP server over both |
 
 ```bash
 bun run verify                 # the gate (`standard`) — the run a task closes on
@@ -134,7 +134,7 @@ fleet's proof that the preset is sufficient for a Worker app, so a row that the 
 is a bug report against the preset rather than a local convenience. The four warden rows —
 `validate-docs`, `warden:index`, `warden:queries`, `warden:duplicates` — are appended and are not
 such a bug report: they come from `@y-core/forge/warden/steps`, which the preset cannot import.
-`test:workerd` is appended too, and *is* one. The three knowledge rows measure what an agent here
+`test:workerd` comes from the preset itself, behind `workerd: true`. The three knowledge rows measure what an agent here
 actually queries, so each passes `dependency: true` and `warden:duplicates` warns rather than fails
 (`config/steps.ts`); `config/golden.ts` is the retrieval set `warden:queries` holds the index to.
 
@@ -194,12 +194,12 @@ it is told to, not because a mechanism stops it.
 `src/worker.dev.ts` layers the Wrangler live-reload script hash onto that CSP, so the reload hash
 cannot leak into production by construction.
 
-| Layer | Role | Location | Runtime |
-|---|---|---|---|
-| **server** | routes, controllers, middleware, SSR views, CSP | `src/` | Cloudflare Worker — never ships to the browser |
-| **domain** | typed page and site content shapes | `src/model/` | isomorphic |
-| **services** | external integrations (email, and anything else off-Worker) | `src/services/` | Cloudflare Worker |
-| **client** | HTMX wiring + mounted scopes | `src/client/` | browser |
+| Layer        | Role                                                        | Location        | Runtime                                        |
+| ------------ | ----------------------------------------------------------- | --------------- | ---------------------------------------------- |
+| **server**   | routes, controllers, middleware, SSR views, CSP             | `src/`          | Cloudflare Worker — never ships to the browser |
+| **domain**   | typed page and site content shapes                          | `src/model/`    | isomorphic                                     |
+| **services** | external integrations (email, and anything else off-Worker) | `src/services/` | Cloudflare Worker                              |
+| **client**   | HTMX wiring + mounted scopes                                | `src/client/`   | browser                                        |
 
 **Pattern:** one composition root → global middleware → declarative route map → controllers →
 services → views, over a model of typed domain shapes.
@@ -248,32 +248,36 @@ asserting one somewhere else (`AGENT_GUIDE.md` §8).
 Add new code in the layer its concern belongs to; reuse an existing export before adding one, and
 never duplicate a capability forge already provides.
 
-| Adding… | Goes to | Recipe |
-|---|---|---|
-| Route | `src/routes.ts` + a controller in `src/controllers/` + the binding in `src/router.tsx` | `ROUTING.md` §6a |
-| HTMX fragment route | the same three files, returning `fragmentResponse` — never `renderPage` | `ROUTING.md` §6c |
-| Route guard, or a change to guard order | `src/app/middleware.ts`, declared in the route's middleware list and never inline in the handler | `MIDDLEWARE_AND_CONTEXT.md` §3d |
-| Global middleware | `registerMiddleware` in `src/app/middleware.ts`, ordered explicitly | `MIDDLEWARE_AND_CONTEXT.md` §1a |
-| Context variable a handler reads | the typed accessors in `src/app/context.ts` — never an untyped `c.get` at a call site | `MIDDLEWARE_AND_CONTEXT.md` §2b |
-| Per-request presentation value (nonce, CSRF token, base URL) | `renderContext` in `src/app/context.ts` | `MIDDLEWARE_AND_CONTEXT.md` §4a |
-| Config value, env var, or binding | `AppConfigSchema` in `src/app/config.ts` — validated at startup, never read from `env` at a call site | `CONFIGURATION_AND_SECRETS.md` §1a |
-| Workers binding declaration | `wrangler.jsonc` **and** the `AppEnv` type, amended together | `CONFIGURATION_AND_SECRETS.md` §4 |
-| A secret | `.dev.vars` locally and `wrangler secret` in production — never a source file, never a commit | `CONFIGURATION_AND_SECRETS.md` §6d |
-| Validation rule for submitted input | the valibot schema beside its handler, parsed with `v.safeParse` before any service call | `INPUT_VALIDATION.md` §1b |
-| Bot or abuse check | ordered against the existing honeypot / CSRF / Turnstile sequence, never appended blindly | `INPUT_VALIDATION.md` §3c |
-| A failure path a handler can return | a dedicated fragment renderer call **and** a test case for that status | `ERROR_HANDLING.md` §6 |
-| Log field or channel | the channel set in `src/app/middleware.ts` — method, path, status, duration, requestId, and no PII | `STRUCTURED_LOGGING.md` §5 |
-| KV access | a typed store from `createKVStore` with an explicit codec — never a raw binding call at a handler | `DATA_STORAGE.md` §2a |
-| A D1 or R2 binding | the documented pattern plus startup validation in the same change | `DATA_STORAGE.md` §3, §4 |
-| SSR component | a forge `ui/core` primitive composed in `src/views/` — never a raw element where a primitive exists | `FORGE_CONSUMPTION.md` §1b |
-| Inline script in a view | `src/views/layout.tsx`, carrying the nonce — never an unnonced `<script>` | `UI_GUIDE.md` §2a |
-| Theme token | the `@theme` block in `src/assets/tailwind.css` — never an arbitrary value at a call site | `UI_GUIDE.md` §5a |
-| Client behaviour | a mounted resumable scope in `src/client/main.ts` — never domain logic, and never a mode the server could render | `UI_GUIDE.md` §6c |
-| Typed page or site content | `src/model/` — plain shapes, no I/O | `ARCHITECTURE_GUIDE.md` §2a |
-| External integration | `src/services/`, reached only from a controller | `ARCHITECTURE_GUIDE.md` §2c |
-| A test | `tests/`, using the `app.request` pattern against `MINIMUM_ENV` | `HANDLER_TESTING.md` §1a |
-| Build-time config module — asset pipeline, gate step table, retrieval set | `config/assets.ts`, `config/steps.ts` and `config/golden.ts` — outside `tsconfig.json`'s `include`, because a module that ships to no runtime must not widen the type program | see _Type System_ |
-| A governing document | `docs/` — warden indexes it, so it needs no registration anywhere. **Never the canon**, which this repository only reads | `AGENT_GUIDE.md` §6d |
+| Adding…                                                                   | Goes to                                                                                                                                                                                                                                                                             | Recipe                             |
+| ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| Route                                                                     | `src/routes.ts` + a controller in `src/controllers/` + the binding in `src/router.tsx`                                                                                                                                                                                              | `ROUTING.md` §6a                   |
+| HTMX fragment route                                                       | the same three files, returning `fragmentResponse` — never `renderPage`                                                                                                                                                                                                             | `ROUTING.md` §6c                   |
+| Route guard, or a change to guard order                                   | `src/app/middleware.ts`, declared in the route's middleware list and never inline in the handler                                                                                                                                                                                    | `MIDDLEWARE_AND_CONTEXT.md` §3d    |
+| A second factor, or a change to what one demands                          | `AUTH_SECOND_FACTORS` in `src/app/config.ts` — a total map, so every factor is named and `"off"` is what stops one being constructed                                                                                                                                                | `AUTH.md` §4                       |
+| Global middleware                                                         | `registerMiddleware` in `src/app/middleware.ts`, ordered explicitly                                                                                                                                                                                                                 | `MIDDLEWARE_AND_CONTEXT.md` §1a    |
+| Context variable a handler reads                                          | the typed accessors in `src/app/context.ts` — never an untyped `c.get` at a call site                                                                                                                                                                                               | `MIDDLEWARE_AND_CONTEXT.md` §2b    |
+| Per-request presentation value (nonce, CSRF token, base URL)              | `renderContext` in `src/app/context.ts`                                                                                                                                                                                                                                             | `MIDDLEWARE_AND_CONTEXT.md` §4a    |
+| Config value, env var, or binding                                         | `AppConfigSchema` in `src/app/config.ts` — validated at startup, never read from `env` at a call site                                                                                                                                                                               | `CONFIGURATION_AND_SECRETS.md` §1a |
+| Workers binding declaration                                               | `wrangler.jsonc` **and** the `AppEnv` type, amended together                                                                                                                                                                                                                        | `CONFIGURATION_AND_SECRETS.md` §4  |
+| A secret                                                                  | `.dev.vars` locally and `wrangler secret` in production — never a source file, never a commit                                                                                                                                                                                       | `CONFIGURATION_AND_SECRETS.md` §6d |
+| Validation rule for submitted input                                       | the valibot schema beside its handler, parsed with `v.safeParse` before any service call                                                                                                                                                                                            | `INPUT_VALIDATION.md` §1b          |
+| Bot or abuse check                                                        | ordered against the existing CSRF / Turnstile sequence, never appended blindly                                                                                                                                                                                                      | `INPUT_VALIDATION.md` §3b          |
+| A failure path a handler can return                                       | a dedicated fragment renderer call **and** a test case for that status                                                                                                                                                                                                              | `ERROR_HANDLING.md` §6             |
+| Log field or channel                                                      | the channel set in `src/app/middleware.ts` — method, path, status, duration, requestId, and no PII                                                                                                                                                                                  | `STRUCTURED_LOGGING.md` §5         |
+| KV access                                                                 | a typed store from `createKVStore` with an explicit codec — never a raw binding call at a handler                                                                                                                                                                                   | `DATA_STORAGE.md` §2a              |
+| A D1 or R2 binding                                                        | the documented pattern plus startup validation in the same change, and `migrations_dir` on a new D1 entry                                                                                                                                                                           | `DATA_STORAGE.md` §3c, §4          |
+| A table of this app's own                                                 | `config/schema.sql`, composed into `config/migrations/` by `bun run db:compose` — never a hand-written migration where compose can express the change                                                                                                                               | `DATA_STORAGE.md` §3c              |
+| A schema file `forge db` should read                                      | `schemas` in `config/db.ts`, by path and in load order — nothing is discovered, so a dependency that ships DDL contributes none until it is named there                                                                                                                             | `DATA_STORAGE.md` §3c              |
+| A question about the **library's** schema                                 | the installed `src/auth/schema.sql` is the declaration, named by path in `config/db.ts`; `config/migrations/` is what actually runs, and this app owns it. After a forge upgrade, `bun run db:schema:check` names the file that moved and `bun run db:compose` writes the migration | `DATA_STORAGE.md` §3c              |
+| SSR component                                                             | a forge `ui/core` primitive composed in `src/views/` — never a raw element where a primitive exists                                                                                                                                                                                 | `FORGE_CONSUMPTION.md` §1b         |
+| Inline script in a view                                                   | `src/views/layout.tsx`, carrying the nonce — never an unnonced `<script>`                                                                                                                                                                                                           | `UI_GUIDE.md` §2a                  |
+| Theme token                                                               | the `@theme` block in `src/assets/tailwind.css` — never an arbitrary value at a call site                                                                                                                                                                                           | `UI_GUIDE.md` §5a                  |
+| Client behaviour                                                          | a mounted resumable scope in `src/client/main.ts` — never domain logic, and never a mode the server could render                                                                                                                                                                    | `UI_GUIDE.md` §6c                  |
+| Typed page or site content                                                | `src/model/` — plain shapes, no I/O                                                                                                                                                                                                                                                 | `ARCHITECTURE_GUIDE.md` §2a        |
+| External integration                                                      | `src/services/`, reached only from a controller                                                                                                                                                                                                                                     | `ARCHITECTURE_GUIDE.md` §2c        |
+| A test                                                                    | `tests/`, using the `app.request` pattern against `MINIMUM_ENV`                                                                                                                                                                                                                     | `HANDLER_TESTING.md` §1a           |
+| Build-time config module — asset pipeline, gate step table, retrieval set | `config/assets.ts`, `config/steps.ts` and `config/golden.ts` — outside `tsconfig.json`'s `include`, because a module that ships to no runtime must not widen the type program                                                                                                       | see _Type System_                  |
+| A governing document                                                      | `docs/` — warden indexes it, so it needs no registration anywhere. **Never the canon**, which this repository only reads                                                                                                                                                            | `AGENT_GUIDE.md` §6d               |
 
 Every row names a **concrete destination** and a **`§N`-anchored recipe**. A row whose recipe
 column says only "see the docs" is not a rule; delete it or finish it.
@@ -293,6 +297,34 @@ column says only "see the docs" is not a rule; delete it or finish it.
   `node_modules` like any dependency, so `bun run verify` typechecks against whatever the manifest
   installs. A checkout of forge sitting elsewhere on the machine is not a dependency here — never
   imported, and never consulted to answer a question about behaviour
+
+**Forge is pinned to a released tarball** — a GitHub Release asset in `package.json`, built by
+forge's `release` workflow with `bun pm pack`, so `files` in forge's manifest is the single thing
+deciding what arrives here. `bun i` always restores exactly that, and the lock carries its `sha512`.
+
+**Never point this at a `codeload.github.com` URL instead.** That serves a git snapshot of the tag,
+which honours no manifest: it ships forge's `tests/`, `config/` and `tsconfig.json` along with
+everything else — 1564 files against the asset's 833.
+
+**Working on forge and starter together is an explicit override: `bun run dev:forge`.** It packs the
+sibling `../forge` as `bun publish` would — honouring `files`, so no `.git`, no `node_modules`, no
+tests — and extracts it over `node_modules/@y-core/forge`. The result knowingly disagrees with
+`bun.lock`, which is the point; it is never a `postinstall`, so the override is always asked for and
+a plain `bun i` is how you undo it. Re-run it after any `bun i`, and after any forge edit — the tree
+is a copy, not a link.
+
+**The capability is forge's, not this app's**, so every consumer gets one implementation: it lives
+at `src/tooling/dev/sync.ts` in the checkout, and `dev:forge` runs it by path rather than through
+the installed `forge` binary. That is deliberate — the installed forge is the pinned tag, which by
+definition does not yet carry a change you are developing, whereas the sibling is exactly the forge
+being synced.
+
+**A `file:../forge` directory dependency is not the alternative it looks like.** Bun materialises
+it as ~5000 per-file symlinks whose targets are container-absolute (`/src/forge/...`), so an editor
+running outside the container finds every one dangling and reports the package as missing — the
+whole package, since `jsxImportSource` routes through it too. `--backend=symlink` does not change
+this; `--linker=isolated` and a `workspaces` entry avoid it only by copying, which is what
+`dev:forge` already does without reshaping the install for every other consumer.
 
 **Note:** `tests/workerd/` is outside `include` for the same reason `tests/browser/` is: its fixture
 spawns the wrangler CLI, so it reads `node:child_process`, `process` and `Buffer` — node globals

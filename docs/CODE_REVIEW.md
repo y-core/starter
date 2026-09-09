@@ -86,7 +86,7 @@ Example correct handler shape (fragment/action handler):
 - [ ] Views render JSX only — no service calls, no DB access, no validation
 - [ ] Views use forge UI components (`Form`, `Field`, `Input`, `Alert`, `Button`, etc.)
 - [ ] Views receive all dynamic data via props (`RenderContext` + domain data structs)
-- [ ] Views do NOT import from `src/controllers/` or `src/services/` (importing `views/layout` is allowed)
+- [ ] Views do NOT import from `src/controllers/`, `src/services/` or `views/layout` — `app/shell.tsx` is `Layout`'s only caller
 
 ### 2d. Routes Layer Rules
 
@@ -105,16 +105,16 @@ check what `@y-core/forge` exports before writing new utility code.
 
 ### 3a. Do Not Re-implement Forge Utilities
 
-| Functionality | Forge export |
-|---|---|
-| CSRF token generation and verification | `csrfProtection` from `@y-core/forge/form` |
-| Security headers (CSP, HSTS, etc.) | `createSecurityHeaders` from `@y-core/forge/security` |
-| HTML entity escaping | `escapeHtml` from `@y-core/forge/http` |
-| Fragment success/error responses | `renderError`, `renderSuccess` from `@y-core/forge/http` |
-| Validation schema and parse | `v` from `@y-core/forge/validation` |
-| Form field reading | `readFields` from `@y-core/forge/form` |
-| Structured logging | `kvLogChannel`, `createLogger` from `@y-core/forge/logging`; log viewer from `@y-core/forge/logging/show` |
-| Theme toggle script | `FOUC_SCRIPT`, `mountTheme`, `DARK_CLASS` from `@y-core/forge/ui/client` |
+| Functionality                          | Forge export                                                                                              |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| CSRF token generation and verification | `csrfProtection` from `@y-core/forge/form`                                                                |
+| Security headers (CSP, HSTS, etc.)     | `createSecurityHeaders` from `@y-core/forge/security`                                                     |
+| HTML entity escaping                   | `escapeHtml` from `@y-core/forge/http`                                                                    |
+| Fragment success/error responses       | `renderError`, `renderSuccess` from `@y-core/forge/http`                                                  |
+| Validation schema and parse            | `v` from `@y-core/forge/validation`                                                                       |
+| Form field reading                     | `readFields` from `@y-core/forge/form`                                                                    |
+| Structured logging                     | `kvLogChannel`, `createLogger` from `@y-core/forge/logging`; log viewer from `@y-core/forge/logging/show` |
+| Theme toggle script                    | `FOUC_SCRIPT`, `mountTheme`, `DARK_CLASS` from `@y-core/forge/ui/client`                                  |
 
 If a handler manually builds a `Content-Type: text/html` response instead of using
 `renderSuccess`, that is a Major finding.
@@ -249,12 +249,12 @@ must survive before it is reported.
 
 The following patterns appear unusual but are intentional. Do not report them.
 
-| Pattern | Why valid |
-|---|---|
-| `required: false` in `rateLimitGuard` | Ratified fail-open under `BOUNDARIES.md` §5b and `BOUNDARIES.md` §5d — rate limiting is availability, not authorisation; `RATE_LIMITER` is declared in `wrangler.jsonc`, so the fallback fires only in `bun test`. Recorded in MIDDLEWARE_AND_CONTEXT.md §3, WEB_DESIGN.md §3b and DATA_STORAGE.md §5 |
-| `renderPage(node, init?)` called directly in `view` without a context arg | `renderPage` from `@y-core/forge/jsx` is a standalone function — no middleware install required |
-| `/showcase/logs` carrying no auth middleware | Gated by `loadLogViewer`'s `access` predicate on `site.debug`; production answers 403 |
-| `MINIMUM_ENV` without `LOGS_KV` in tests | KV logging gracefully degrades when binding is absent |
-| `mergeSecurityHeaders` in `worker.dev.ts` | Intentional dev/prod CSP split — live-reload hash must not leak to prod |
-| `rawHtml()` for `FOUC_SCRIPT` | Intentional synchronous inline script required for FOUC prevention |
-| `"types": []` in tsconfig | Global scope uses no `@types/*`; Workers types come from generated `.types/` |
+| Pattern                                                                             | Why valid                                                                                                                                                                                                                                                                                             |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `required: false` in `rateLimitGuard`                                               | Ratified fail-open under `BOUNDARIES.md` §5b and `BOUNDARIES.md` §5d — rate limiting is availability, not authorisation; `RATE_LIMITER` is declared in `wrangler.jsonc`, so the fallback fires only in `bun test`. Recorded in MIDDLEWARE_AND_CONTEXT.md §3, WEB_DESIGN.md §3b and DATA_STORAGE.md §5 |
+| `renderShell(c, content, slot, init?)` called in `view` with no `<Layout>` in sight | The shell registered in `worker.ts` is the single writer of `<html>`; a view that composed `Layout` would nest a second document                                                                                                                                                                      |
+| `/showcase/logs` carrying no auth middleware                                        | Gated by `loadLogViewer`'s `access` predicate on `site.debug`; production answers 403                                                                                                                                                                                                                 |
+| `MINIMUM_ENV` without `LOGS_KV` in tests                                            | KV logging gracefully degrades when binding is absent                                                                                                                                                                                                                                                 |
+| `mergeSecurityHeaders` in `worker.dev.ts`                                           | Intentional dev/prod CSP split — live-reload hash must not leak to prod                                                                                                                                                                                                                               |
+| `rawHtml()` for `FOUC_SCRIPT`                                                       | Intentional synchronous inline script required for FOUC prevention                                                                                                                                                                                                                                    |
+| `"types": []` in tsconfig                                                           | Global scope uses no `@types/*`; Workers types come from generated `.types/`                                                                                                                                                                                                                          |

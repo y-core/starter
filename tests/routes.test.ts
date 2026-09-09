@@ -1,13 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
 import { CSRF_FIELD_DEFAULT, TURNSTILE_FIELD_DEFAULT } from "@y-core/forge/form";
-import { createTestContext, fakeKV, mintTestCsrfToken } from "@y-core/forge/testing";
+import { createTestContext, fakeD1, fakeKV, mintTestCsrfToken } from "@y-core/forge/testing";
 
-import type { AppConfig } from "../src/app/config";
-import type { AppEnv } from "../src/app/context";
-import { CONTACT_DECOY, ContactSchema, contactAction } from "../src/controllers/actions/contact";
-import app from "../src/worker";
-import devApp from "../src/worker.dev";
+import type { AppConfig, AppEnv } from "../src/app/types";
+import { ContactSchema, contactAction } from "../src/controllers/actions/contact";
+import { app } from "../src/worker";
+import { devApp } from "../src/worker.dev";
 
 const SITE_ORIGIN = "https://example.com";
 
@@ -21,6 +20,11 @@ const BASE_TEST_CONFIG: AppConfig = {
     debug: false,
   },
   security: { csrf: { secret: "de7bf4aef360e3a4c3254c9cec7e45d0f1fd98cc2219c62b5b07e826ba1bcc6e" } },
+  auth: {
+    keyRing: ["9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c3d5e"],
+    sessionSecret: "6f2b4a7c0d3e5f7a9b1c3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e",
+    rpName: "Forge Studio",
+  },
   services: {
     email: {
       apiKey: "test-api-key",
@@ -77,6 +81,10 @@ const MINIMUM_ENV = {
   EMAIL_TO: "to@example.com",
   TURNSTILE_SECRET_KEY: "test-ts-key",
   TURNSTILE_SITE_KEY: "test-site-key",
+  AUTH_KEY_RING: "9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c3d5e",
+  SESSION_SECRET: "6f2b4a7c0d3e5f7a9b1c3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e",
+  AUTH_KV: fakeKV(),
+  AUTH_DB: fakeD1(),
   // Set in every case, so the production worker is held against it throughout and not only in the
   // one test below that names it. It must never widen what production accepts.
   TURNSTILE_DEV_HOSTNAME: DEV_HOSTNAME,
@@ -112,7 +120,7 @@ describe("GET /api/health", () => {
     const response = await app.request("/api/health", {}, MINIMUM_ENV);
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ ok: true, checks: { csrf: true } });
+    expect(await response.json()).toEqual({ ok: true, checks: { csrf: true, schema: true } });
   });
 
   it("includes required security headers", async () => {
@@ -653,43 +661,6 @@ describe("POST /api/contact — rate limiting", () => {
   });
 });
 
-describe("POST /api/contact — honeypot", () => {
-  // The one test that makes the honeypot hazard non-silent: `<Form>` stopped auto-rendering a decoy
-  // at forge 0.0.80 and `defineAction` stopped stripping one it was not told about at 0.0.81, so bot
-  // detection disappears without a sound unless `<Honeypot>` is composed and `honeypot:` is named.
-  // Status only — the body is byte-identical to a real validation refusal by design, and pinning it
-  // would assert a distinguishability forge deliberately does not have.
-  it("refuses when the decoy field is filled", async () => {
-    const body = new URLSearchParams(VALID_FORM_WITH_TOKEN);
-    body.set(CONTACT_DECOY, "Bot");
-
-    const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
-
-    expect(response.status).toBe(422);
-  });
-
-  it("proceeds when the decoy field is empty", async () => {
-    const body = new URLSearchParams(VALID_FORM_WITH_TOKEN);
-    body.set(CONTACT_DECOY, "");
-
-    const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
-
-    expect(response.status).toBe(200);
-    expect(await response.text()).toBe(EXPECTED_SUCCESS_HTML);
-  });
-
-  it("proceeds when the decoy field is absent", async () => {
-    const response = await app.request(
-      "/api/contact",
-      { method: "POST", headers: postHeaders(), body: VALID_FORM_WITH_TOKEN.toString() },
-      MINIMUM_ENV,
-    );
-
-    expect(response.status).toBe(200);
-    expect(await response.text()).toBe(EXPECTED_SUCCESS_HTML);
-  });
-});
-
 describe("POST /api/contact — body-read semantics", () => {
   // `formToObject` leaves an absent field absent rather than substituting `""` (the removed
   // `readFields` did the latter). A non-optional `phone` would therefore 422 every submission that
@@ -723,8 +694,8 @@ describe("POST /api/contact — body-read semantics", () => {
   });
 
   // The strict schema declares only the four real fields. Everything else the form posts is dropped
-  // because a guard consumed it: `_csrf` via `csrfFieldCtx`, the decoy and the Turnstile token
-  // because the action named them. An undeclared extra is a refusal, not a silent drop.
+  // because a guard consumed it: `_csrf` via `csrfFieldCtx`, and the Turnstile token because the
+  // action named it. An undeclared extra is a refusal, not a silent drop.
   it("refuses an undeclared field", async () => {
     const body = new URLSearchParams(VALID_FORM_WITH_TOKEN);
     body.set("role", "admin");
@@ -740,22 +711,15 @@ describe("contact form — view ↔ schema contract", () => {
   // Replaces the old rendered-field-names test. Crafted-body tests structurally cannot see view↔
   // handler drift: they post whatever the test author typed. This one reads what the page actually
   // renders and holds it against what the schema actually declares.
-  it("renders exactly the fields the schema declares, plus the three guard-consumed ones", async () => {
+  it("renders exactly the fields the schema declares, plus the two guard-consumed ones", async () => {
     const res = await app.request("/", {}, MINIMUM_ENV);
     const html = await res.text();
 
     const rendered = [...html.matchAll(/<(?:input|textarea)\b[^>]*\bname="([^"]*)"/g)].map((m) => m[1]);
     const declared = Object.keys(ContactSchema.entries);
-    const injected = [CSRF_FIELD_DEFAULT, CONTACT_DECOY, TURNSTILE_FIELD_DEFAULT];
+    const injected = [CSRF_FIELD_DEFAULT, TURNSTILE_FIELD_DEFAULT];
 
     expect(rendered.filter((name) => !injected.includes(name as string))).toEqual(declared);
-  });
-
-  it("renders the decoy under the app-owned name the action checks", async () => {
-    const res = await app.request("/", {}, MINIMUM_ENV);
-    const html = await res.text();
-
-    expect(html).toContain(`name="${CONTACT_DECOY}"`);
   });
 });
 
@@ -819,14 +783,14 @@ describe("GET /showcase/logs — full page", () => {
     expect(res.status).toBe(200);
   });
 
-  // The viewer no longer builds its own document: `show.logs.tsx` hands forge this app's `Layout`,
-  // so the page arrives inside the shell that carries the dark class and the pre-paint theme script.
-  // The viewer's own heading is what identifies the page; the `<title>` belongs to the app.
+  // The viewer builds no document of its own: it renders through the shell `worker.ts` registers, so
+  // the page arrives inside the chrome that carries the dark class and the pre-paint theme script.
+  // The `<title>` composes the mount's own page title with the site's.
   it("renders the viewer inside the app's Layout, not a shell of forge's own", async () => {
     const res = await app.request("/showcase/logs", {}, logsDebugEnv());
     const text = await res.text();
     expect(text).toContain("<!DOCTYPE html>");
-    expect(text).toContain("<title>Forge Studio</title>");
+    expect(text).toContain("<title>Logs — Forge Studio</title>");
     expect(text).toContain('<h1 class="text-2xl font-semibold tracking-tight text-balance text-foreground">Request Log</h1>');
     expect(text).toContain('data-scope="theme"');
     expect(text).toContain('hx-get="/showcase/logs"');

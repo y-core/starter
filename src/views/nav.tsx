@@ -1,7 +1,9 @@
 /** @jsxImportSource @y-core/forge/jsx */
 
+import { AUTH_NAV_FILTERS, AUTH_NAV_SIGNOUT_SLOT } from "@y-core/forge/auth/web";
 import type { NavDefinition } from "@y-core/forge/ui/chrome";
 
+import { authWebPaths } from "../app/auth";
 import { routes } from "../routes";
 
 /**
@@ -21,12 +23,11 @@ const NAV_HREFS: Record<string, string> = {
   showcaseRuntime: routes.showcase.ui.runtime.href(),
   showcaseHtmx: routes.showcase.ui.htmx.href(),
   showcaseChrome: routes.showcase.ui.chrome.href(),
+  authSignin: authWebPaths.auth.signin(),
+  authSignup: authWebPaths.auth.signup(),
+  account: routes.account.href(),
+  adminUsers: authWebPaths.admin.users.list(),
 };
-
-/** Resolves a `primaryNav` route-map key to a URL; falls back to the home route on an unknown key. */
-export function resolveNavHref(key: string): string {
-  return NAV_HREFS[key] ?? routes.home.href();
-}
 
 /** The primary navbar configuration: one menu of destinations behind a single trigger. */
 export const primaryNav: NavDefinition = {
@@ -44,8 +45,29 @@ export const primaryNav: NavDefinition = {
             { label: "UI", href: "showcaseUi" },
           ],
         },
+        {
+          // Sign-out is a POST, so it enters as a slot rather than a link — a `NavLink` announces a
+          // destination, which an action is not (rule:forge-ui-nav-slot-not-link).
+          // Nothing here names a factor: which second factor a deployment demands is a switch
+          // (`AUTH_SECOND_FACTORS`), and a nav entry naming one would advertise it while off.
+          label: "Account",
+          items: [
+            { label: "Sign in", href: "authSignin", filters: [AUTH_NAV_FILTERS.anonymous] },
+            { label: "Sign up", href: "authSignup", filters: [AUTH_NAV_FILTERS.anonymous] },
+            { label: "Your account", href: "account", filters: [AUTH_NAV_FILTERS.signedIn] },
+            // The admin token rather than the signed-in one: the users list is behind `requireAdmin`,
+            // so offering it to an ordinary member links to a 403.
+            { label: "Users", href: "adminUsers", filters: [AUTH_NAV_FILTERS.admin] },
+            { slot: AUTH_NAV_SIGNOUT_SLOT, filters: [AUTH_NAV_FILTERS.signedIn] },
+          ],
+        },
         { label: "Contact", href: "contact" },
       ],
     },
   ],
 };
+
+/** Resolves a `primaryNav` route-map key to a URL; falls back to the home route on an unknown key. */
+export function resolveNavHref(key: string): string {
+  return NAV_HREFS[key] ?? routes.home.href();
+}

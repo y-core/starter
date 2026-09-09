@@ -20,7 +20,7 @@ description: "The AppConfigSchema fields, the environment variables and Workers 
 - §2a appConfig — Env Binding Map
 - §2b configStore — Lazy Validation
 - §2c Config Access Pattern
-- §3 Environment Variables: SITE_ORIGIN, CSRF_SECRET, EMAIL_*, TURNSTILE_* — required vs optional
+- §3 Environment Variables: SITE_ORIGIN, CSRF_SECRET, EMAIL__, TURNSTILE__ — required vs optional
 - §3a Required Env Vars
 - §3b Optional Env Vars
 - §3c Env Var Naming Convention
@@ -30,6 +30,7 @@ description: "The AppConfigSchema fields, the environment variables and Workers 
 - §4a ASSETS Binding — Static Files
 - §4b LOGS_KV Binding — Structured Log Persistence
 - §4c RATE_LIMITER Binding — DoS Mitigation
+- §4d AUTH_KV and AUTH_DB Bindings — Sessions and Identity
 - §5 securityHeaders: production CSP for Turnstile, nonce, self
 - §5a Production CSP Declaration
 - §5b NONCE Sentinel
@@ -145,12 +146,12 @@ See [ARCHITECTURE_GUIDE.md](./ARCHITECTURE_GUIDE.md) §3a for the full DI patter
 All required vars must be present at request time. Their absence causes
 `configStore.get(c.env)` to throw — the request is never served with missing config.
 
-| Var | Purpose |
-|---|---|
-| `CSRF_SECRET` | HMAC signing key for CSRF tokens — min 32 hex chars (16 bytes) |
-| `EMAIL_API_KEY` | Transactional email API key (MailChannels or compatible provider) |
-| `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile server-side verification secret |
-| `TURNSTILE_SITE_KEY` | Turnstile public site key — embedded in HTML for the widget |
+| Var                    | Purpose                                                           |
+| ---------------------- | ----------------------------------------------------------------- |
+| `CSRF_SECRET`          | HMAC signing key for CSRF tokens — min 32 hex chars (16 bytes)    |
+| `EMAIL_API_KEY`        | Transactional email API key (MailChannels or compatible provider) |
+| `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile server-side verification secret              |
+| `TURNSTILE_SITE_KEY`   | Turnstile public site key — embedded in HTML for the widget       |
 
 `TURNSTILE_SITE_KEY` is public (it appears in rendered HTML) but is still read via
 `configStore` so it participates in startup validation and is not hardcoded.
@@ -159,13 +160,13 @@ All required vars must be present at request time. Their absence causes
 
 These vars have schema-level defaults. Omitting them does not cause validation failure.
 
-| Var | Default | Notes |
-|---|---|---|
-| `SITE_ORIGIN` | the `SITE_ORIGIN` literal in `src/app/config.ts` | Canonical site origin — CSP `connect-src`, CORS `allowedOrigins`, absolute URLs in HTML. See §3d |
-| `LOG_LEVEL` | `false` (not debug) | Set to `"DEBUG"` to enable debug logging |
-| `EMAIL_FROM` | `hello@yourdomain.com` | Sender address on outbound email |
-| `EMAIL_TO` | `hello@yourdomain.com` | Default recipient for contact form submissions |
-| `TURNSTILE_DEV_HOSTNAME` | none — the site origin's hostname is used | The hostname a Turnstile siteverify answer is held against, honoured only by the dev entry. See §3e |
+| Var                      | Default                                          | Notes                                                                                               |
+| ------------------------ | ------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `SITE_ORIGIN`            | the `SITE_ORIGIN` literal in `src/app/config.ts` | Canonical site origin — CSP `connect-src`, CORS `allowedOrigins`, absolute URLs in HTML. See §3d    |
+| `LOG_LEVEL`              | `false` (not debug)                              | Set to `"DEBUG"` to enable debug logging                                                            |
+| `EMAIL_FROM`             | `hello@yourdomain.com`                           | Sender address on outbound email                                                                    |
+| `EMAIL_TO`               | `hello@yourdomain.com`                           | Default recipient for contact form submissions                                                      |
+| `TURNSTILE_DEV_HOSTNAME` | none — the site origin's hostname is used        | The hostname a Turnstile siteverify answer is held against, honoured only by the dev entry. See §3e |
 
 `LOG_LEVEL` is coerced to a boolean via `v.transform`: any value other than the
 string `"DEBUG"` yields `false`. This prevents accidental debug exposure in
@@ -193,7 +194,7 @@ This mirrors the nested structure of `AppConfigSchema` (§1a).
 The origin lives in **exactly four places**, one per mutually exclusive case: the literal above,
 which is production's value and the fallback when the environment carries none; `.dev.vars`, which
 sets the dev origin; the `--var SITE_ORIGIN` on `dev:browser` in `package.json`, which points the
-browser suite at `https://localhost:8787`; and the env file `tests/workerd/dev-server.ts` generates
+browser suite at `https://localhost:8787`; and the env file `@y-core/forge/testing/workerd` generates
 per run, which names the loopback port that run reserved. A fifth spelling in `wrangler.jsonc`'s
 `vars` would be one nothing checks, so there is none.
 
@@ -206,7 +207,7 @@ request the suite makes.
 
 Each case has a single browser origin, so `SITE_ORIGIN` always names the origin the browser is
 actually pointed at — the posture `WORKERS_PLATFORM.md` §4e rules on, and the single source the
-allowed-origin set derives from. The `extraOrigins` escape hatch exists to allow a *second* origin in
+allowed-origin set derives from. The `extraOrigins` escape hatch exists to allow a _second_ origin in
 one running worker, and no case here needs one.
 
 **The literal is a value, not an `env()` read.** `env()` returns a mapping marker `createConfig`
@@ -233,11 +234,11 @@ had failed every dev submission since the testing keys were adopted.
 
 `TURNSTILE_DEV_HOSTNAME` names the hostname to expect instead. The three postures it serves:
 
-| Posture | Keys | `TURNSTILE_DEV_HOSTNAME` |
-|---|---|---|
-| Local dev with no Cloudflare account | the `1x…` testing keys (§6b) | `example.com` |
-| Local dev proving production parity | real keys from `dash.cloudflare.com/turnstile`, dev hostname allowed on the site | omitted — siteverify returns the browser's own hostname |
-| `tests/workerd/` | the testing keys | `example.com`, from the generated env file |
+| Posture                              | Keys                                                                             | `TURNSTILE_DEV_HOSTNAME`                                |
+| ------------------------------------ | -------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| Local dev with no Cloudflare account | the `1x…` testing keys (§6b)                                                     | `example.com`                                           |
+| Local dev proving production parity  | real keys from `dash.cloudflare.com/turnstile`, dev hostname allowed on the site | omitted — siteverify returns the browser's own hostname |
+| `tests/workerd/`                     | the testing keys                                                                 | `example.com`, from the generated env file              |
 
 **The value rides on config; the permission to consult it does not.** A Worker has no module-scope
 environment, so the hostname has to reach the request through `AppConfigSchema` like every other
@@ -268,27 +269,29 @@ types to merge into.)
     "assets": {
       "binding": "ASSETS",
       "directory": "./public",
-      "run_worker_first": [
-        "/*",
-        "!/favicon.ico", "!/favicon.svg", "!/apple-touch-icon.png",
-        "!/icon-192.png", "!/icon-512.png", "!/site.webmanifest"
-      ],
+      "run_worker_first": ["/*", "!/static/*", "!/favicon.ico"],
       "not_found_handling": "none"
     }
 
-The Worker runs first for every path, except the six files `icons.outputs` writes to the asset
-root — those are served straight off the asset layer, with no `fetch` event. `not_found_handling:
-"none"` delegates 404 handling to the Worker's `applyAssets` call (which renders the custom
-not-found view).
+The Worker runs first for every path, except what `icons.outputs` writes — those are served
+straight off the asset layer, with no `fetch` event. `not_found_handling: "none"` delegates 404
+handling to the Worker, which answers every unmatched URL through the `notFound` hook on
+`createApp`.
 
 **The list is not decoration: the gate holds it in sync.** `validate-asset-root` diffs what
-`config/assets.ts` writes into the asset root against the `!`-prefixed rules here, so adding a new
-root-level output without its exclusion fails `bun run verify`. That is why `config/steps.ts`
-passes `workerConfig` as well as `assetConfig` — the preset emits the row only when it has both.
+`config/assets.ts` writes into the asset tree against the `!`-prefixed rules here, so an output
+landing outside a covered path fails `bun run verify`. That is why `config/steps.ts` passes
+`workerConfig` as well as `assetConfig` — the preset emits the row only when it has both.
+
+**The rule count does not track the icon count.** `/static` is `icons.publicPrefix`, so one glob
+covers every output; `favicon.ico` is the one output marked `root: true`, for the contexts that
+probe the origin root because there is no HTML head to read. Adding an icon output changes
+`config/assets.ts` alone — the head `<link>` set comes from the same list, generated into
+`.forge/assets.ts` as `ICON_LINKS` and rendered by `src/views/layout.tsx`.
 
 This replaced a plain `run_worker_first: false` at the 0.1.2 upgrade. The boolean served every
-matching static file ahead of the Worker; the array narrows that to the six root files, so
-`/assets/*` now reaches the Worker and is answered through the `ASSETS` binding.
+matching static file ahead of the Worker; the array narrows that to the icon tree, so `/assets/*`
+now reaches the Worker and is answered through the `ASSETS` binding.
 
 `ASSETS` is a `Fetcher` type in `Env`. It is consumed by `applyAssets` from
 `@y-core/forge/app` — app code does not call it directly.
@@ -328,6 +331,34 @@ absent it is a no-op. This is acceptable because rate limiting is a DoS mitigati
 not a security-critical auth check. The CSRF and origin guards are unaffected by
 `RATE_LIMITER` absence. See [MIDDLEWARE_AND_CONTEXT.md](./MIDDLEWARE_AND_CONTEXT.md) §3b.
 
+### 4d. AUTH_KV and AUTH_DB Bindings — Sessions and Identity
+
+    "kv_namespaces": [
+      { "binding": "AUTH_KV", "id": "auth_kv_local", "preview_id": "auth_kv_local" }
+    ],
+    "d1_databases": [
+      {
+        "binding": "AUTH_DB",
+        "database_name": "forge-starter-auth",
+        "database_id": "auth_db_local"
+      }
+    ]
+
+`AUTH_KV` is a `KVNamespace` holding **sessions only**, read through
+`createKVSessionStorage(c.env.AUTH_KV, { prefix: "sess" })` in `authSessionGuard`.
+`AUTH_DB` is the D1 database behind every forge auth store — users, factors, credentials, identity
+links, OTP state, challenges and nonces.
+
+**Both are required.** Unlike `LOGS_KV` and `RATE_LIMITER`, neither carries `optional: true` in
+`validateBindings` (`src/app/middleware.ts`), so an absent one throws before the first request
+rather than degrading a guard into a no-op. A test fixture omitting either throws for the same
+reason — see [HANDLER_TESTING.md](./HANDLER_TESTING.md) §1c.
+
+The split is deliberate: challenges and nonces moved out of KV to D1 because taking a challenge and
+winning a nonce each have to be one statement, and KV's read-then-write hands two racing requests
+the same challenge and reports both replays of a token as fresh. See
+[DATA_STORAGE.md](./DATA_STORAGE.md) §1d and §3, and [AUTH.md](./AUTH.md).
+
 ---
 
 ## 5. securityHeaders — Production CSP
@@ -353,7 +384,7 @@ from `@y-core/forge/security` consumes it and adds the remaining default directi
   two-year HSTS. Writing them here copies forge's defaults into app code (FORGE_CONSUMPTION §1) and
   stops the app's posture tracking forge on the next upgrade.
 - `permissionsPolicy` — `buildPermissionsPolicy` emits `()`, fully disabled, for every feature the
-  caller omits. A key naming a feature therefore *enables* it. The `microphone: ["self"]` this app
+  caller omits. A key naming a feature therefore _enables_ it. The `microphone: ["self"]` this app
   carried until forge 0.1.2 disabled nothing that was not already disabled, and enabled the
   microphone for an origin whose only surface is a contact form.
 - COEP — `require-corp` needs the `challenges.cloudflare.com` frame to opt in, and `credentialless`
@@ -374,11 +405,11 @@ Never hardcode a literal nonce in `securityHeaders` — use the `NONCE` sentinel
 Cloudflare Turnstile requires `https://challenges.cloudflare.com` in three
 directives:
 
-| Directive | Reason |
-|---|---|
-| `scriptSrc` | Turnstile widget script loaded from this origin |
+| Directive    | Reason                                                            |
+| ------------ | ----------------------------------------------------------------- |
+| `scriptSrc`  | Turnstile widget script loaded from this origin                   |
 | `connectSrc` | Widget makes XHR/fetch calls back to this origin for verification |
-| `frameSrc` | Widget renders an iframe from this origin |
+| `frameSrc`   | Widget renders an iframe from this origin                         |
 
 Removing any of the three causes the Turnstile widget to fail silently or produce
 CSP violation errors in the browser console.
@@ -429,7 +460,7 @@ The `1x...` keys are Cloudflare's official Turnstile test keys:
 Use these in `.dev.vars` and in test environments. Do not use them in production.
 
 They still make a real siteverify call, so `challenges.cloudflare.com` must be reachable — the
-secret key accepts *any* response token, but the answer it returns names `example.com` as the
+secret key accepts _any_ response token, but the answer it returns names `example.com` as the
 hostname. That is what `TURNSTILE_DEV_HOSTNAME` is for; omit it only with real keys (§3e).
 
 ### 6c. CSRF_SECRET Generation

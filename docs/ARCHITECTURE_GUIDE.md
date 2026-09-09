@@ -25,7 +25,7 @@ description: "The createWorker composition root, this app's layer directories, t
 - §2b Layer Dependency Rules
 - §2c No Layer Skipping — Handler → Service Boundary
 - §3 DI via Config: configStore.get(c.env), AppEnv bindings
-- §3a configStore.get(c.env) — Typed Config Access
+- §3a configStore.get(c.env) — The Injection Point
 - §3b AppEnv and AppContext — Type Parameters
 - §3c renderContext — Per-Request Presentation State
 - §4 Dev/prod CSP split: live-reload hash in worker.dev.ts only
@@ -43,10 +43,15 @@ description: "The createWorker composition root, this app's layer directories, t
 `src/worker.ts` exports a factory function that accepts `SecurityHeadersOptions`:
 
     export function createWorker(security: SecurityHeadersOptions) {
-      const app = createApp<AppEnv>({ config: configStore, isDebug: (c) => configStore.get(c.env).site.debug })
+      const app = createApp<AppEnv>({
+        config: configStore,
+        shell: appShell,
+        isDebug: (c) => configStore.get(c.env).site.debug,
+        notFound: notFoundController,
+      })
       registerMiddleware(app, security)
       app.map(routes, controller)
-      applyAssets(app, { notFoundView: notFoundController })
+      applyAssets(app)
       return app
     }
     export default createWorker(securityHeaders)  // production default
@@ -59,14 +64,18 @@ live-reload hash on top via `mergeSecurityHeaders`.
 
 The four steps inside the factory execute in a fixed order:
 
-1. `createApp` — Forge app with Config integration and debug mode flag
+1. `createApp` — Forge app with Config integration, the shell, the debug flag, and the `notFound` hook
 2. `registerMiddleware` — security headers, request ID, logger, CORS for `/api/*`
 3. `app.map(routes, controller)` — mounts routes from `src/routes.ts` + handlers from `src/router.tsx`
-4. `applyAssets` — static asset serving and 404 handler
+4. `applyAssets` — static asset serving
 
 Middleware must be applied before routes so that security headers and request context
 are set before any handler runs. `applyAssets` is last because it catches all
 unmatched paths.
+
+`notFoundController` is registered on `createApp`, not on `applyAssets`: it is the router's no-match
+answer **and** what the asset catch-all renders when the binding declines, so an unmatched URL gets
+the same page whether or not `ASSETS` is bound.
 
 ### 1c. Production Default Export
 
@@ -93,7 +102,7 @@ The dev entry (`src/worker.dev.ts`) is passed as the positional argument to
     src/router.tsx         ← createController binding (controller/middleware mapping)
     src/controllers/       ← plain controllers (definePage handlers + HTMX mutation handlers)
     src/services/          ← external integrations (email, turnstile)
-    src/views/             ← forge JSX view components (@jsxImportSource @y-core/forge); page views own <Layout>
+    src/views/             ← forge JSX view components (@jsxImportSource @y-core/forge); layout.tsx is the shell's
     src/model/             ← domain types and valibot schemas
     src/client/main.ts     ← browser JS (esbuild entry point)
     src/assets/            ← tailwind.css, SVG assets
@@ -102,18 +111,19 @@ The dev entry (`src/worker.dev.ts`) is passed as the positional argument to
 
 Each layer may only import from the layers listed:
 
-| Layer | May import from |
-|---|---|
-| `controllers/` | `services/`, `model/`, `app/`, `views/`, `routes`, `@y-core/forge/jsx` |
-| `services/` | `model/`, `app/config` |
-| `views/` | `model/`, `app/context`, `views/layout` |
-| `app/middleware.ts` | `app/config`, forge (`security`, `form`, `logging`) |
-| `routes.ts` | (route data only — no handlers or views) |
-| `router.tsx` | `controllers/`, `app/middleware` |
-| `worker.ts` | `routes.ts`, `router.tsx`, `controllers/`, `app/` |
+| Layer               | May import from                                                        |
+| ------------------- | ---------------------------------------------------------------------- |
+| `controllers/`      | `services/`, `model/`, `app/`, `views/`, `routes`, `@y-core/forge/jsx` |
+| `services/`         | `model/`, `app/config`                                                 |
+| `views/`            | `model/`, `app/context`, `views/layout`                                |
+| `app/middleware.ts` | `app/config`, forge (`security`, `form`, `logging`)                    |
+| `routes.ts`         | (route data only — no handlers or views)                               |
+| `router.tsx`        | `controllers/`, `app/middleware`                                       |
+| `worker.ts`         | `routes.ts`, `router.tsx`, `controllers/`, `app/`                      |
 
 Controllers must not import from other controllers. Services must not import from controllers or views.
-Views must not own business rules or call services directly. Page views compose their own `<Layout>`.
+Views must not own business rules or call services directly. Only `app/shell.tsx` imports `views/layout` —
+a page view renders a `<main>` and reaches the chrome through the shell.
 
 ### 2c. No Layer Skipping — Handler → Service Boundary
 
@@ -140,21 +150,16 @@ This keeps handlers testable (mock the service) and services independently reusa
 
 ## 3. DI via Config
 
-### 3a. configStore.get(c.env) — Typed Config Access
+### 3a. configStore.get(c.env) — The Injection Point
 
-`configStore` is a `Config` instance from `@y-core/forge/config`. It validates all
-environment variables against `AppConfigSchema` on first access and caches the result.
+**`configStore` is this app's whole DI mechanism** — there is no container and no provider
+registry. A controller resolves the validated `AppConfig` once and passes it down; a service
+receives it as a parameter (§2c) rather than importing `configStore`, which is what keeps
+`services/` testable without a Worker environment and is why §2b allows it `app/config` at all.
 
-    import { configStore } from "./app/config"
-
-    // Inside any handler or middleware:
-    const config = configStore.get(c.env)   // typed AppConfig, validated
-    const baseUrl = config.site.url.origin
-    const csrfSecret = config.security.csrf.secret
-    const apiKey = config.services.email.apiKey
-
-Never read `c.env.SOME_VAR` directly in handlers or services — always go through
-`configStore.get(c.env)` so all access is typed and validated.
+The call pattern, and the rule against reading `c.env` directly, are
+[CONFIGURATION_AND_SECRETS.md](./CONFIGURATION_AND_SECRETS.md) §2c. `src/app/config.ts` owns the
+schema behind it.
 
 ### 3b. AppEnv and AppContext — Type Parameters
 
@@ -173,15 +178,18 @@ accessed through forge's context helpers (`getNonce(c)`, `requestIdCtx.getOption
     // ctx: { baseUrl, csrfToken, nonce, turnstileSiteKey }
 
 `renderContext` materializes per-request values for injection into JSX views:
+
 - `nonce` — extracted from context (set by `createSecurityHeaders`)
 - `csrfToken` — minted only when `csrfPath` is provided; empty string for pages without forms
 - `baseUrl` — `config.site.url.origin`
 - `turnstileSiteKey` — from `config.services.turnstile.siteKey`
 
-`renderContext` is called inside the controller's `loader`. The controller passes the resulting
-`ctx` as a view prop. `renderPage()` from `@y-core/forge/jsx` is called in the `view`
-function to convert JSX to an `HtmlResponse`. Views receive a typed `RenderContext` prop,
-compose their own `<Layout ctx={ctx}>`, and remain pure rendering functions.
+`appShell` calls `renderContext` once per request, so most controllers never build one. The home
+controller is the exception: its contact form needs a path-bound CSRF token and the Turnstile site
+key, so its `loader` calls `renderContext(c, config, routes.contact.href())` and passes the result
+as a view prop. A controller's `view` calls `renderShell(c, content, slot, init?)` from
+`@y-core/forge/app`, which renders the content through the registered shell and returns an
+`HtmlResponse`. Views remain pure rendering functions that return a `<main>`.
 
 ---
 

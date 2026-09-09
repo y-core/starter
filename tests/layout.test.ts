@@ -1,10 +1,14 @@
 import { describe, expect, it } from "bun:test";
 
 import { assets } from "@assets";
+import { fakeD1, fakeKV } from "@y-core/forge/testing";
 
-import app from "../src/worker";
+import { app } from "../src/worker";
 
 const MOCK_ASSETS = { fetch: async () => new Response("", { status: 200 }) } as unknown as Fetcher;
+
+/** The 404 page only renders once the asset binding has declined the path. */
+const MOCK_ASSETS_404 = { fetch: async () => new Response("Not Found", { status: 404 }) } as unknown as Fetcher;
 
 const MINIMUM_ENV = {
   ASSETS: MOCK_ASSETS,
@@ -15,12 +19,57 @@ const MINIMUM_ENV = {
   EMAIL_TO: "to@example.com",
   TURNSTILE_SECRET_KEY: "test-ts-key",
   TURNSTILE_SITE_KEY: "test-site-key",
+  AUTH_KEY_RING: "9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c3d5e",
+  SESSION_SECRET: "6f2b4a7c0d3e5f7a9b1c3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e",
+  AUTH_KV: fakeKV(),
+  AUTH_DB: fakeD1(),
 } as unknown as Env;
 
 async function getHomeHtml(): Promise<string> {
   const res = await app.request("/", {}, MINIMUM_ENV);
   return res.text();
 }
+
+describe("Layout — page meta", () => {
+  it("leaves the site's own title uncomposed and keeps the canonical on the one indexable page", async () => {
+    const text = await getHomeHtml();
+    expect(text).toContain("<title>Forge Studio</title>");
+    expect(text).toContain('<link rel="canonical" href="https://example.com/">');
+    expect(text).not.toContain('name="robots"');
+  });
+
+  it("composes a page's own title with the site's, and drops the canonical it is noindex against", async () => {
+    const res = await app.request("/does-not-exist", {}, { ...MINIMUM_ENV, ASSETS: MOCK_ASSETS_404 });
+    const text = await res.text();
+    expect(res.status).toBe(404);
+    expect(text).toContain("<title>Page not found — Forge Studio</title>");
+    expect(text).toContain('<meta name="robots" content="noindex">');
+    expect(text).not.toContain('rel="canonical"');
+  });
+
+  // The mount writes the title and the `noindex`; this app never restates either.
+  it("renders a mounted page's own descriptor through the shell", async () => {
+    const res = await app.request("/showcase/ui", {}, MINIMUM_ENV);
+    const text = await res.text();
+    expect(text).toContain("<title>Catalog — Forge Studio</title>");
+    expect(text).toContain('<meta name="robots" content="noindex">');
+    expect(text).not.toContain('rel="canonical"');
+  });
+
+  it("carries the site's shared description and OG tags onto a page that states neither", async () => {
+    const res = await app.request("/does-not-exist", {}, { ...MINIMUM_ENV, ASSETS: MOCK_ASSETS_404 });
+    const text = await res.text();
+    expect(text).toContain('<meta property="og:title" content="Forge Studio">');
+    expect(text).toContain('<meta property="og:type" content="website">');
+    expect(text).toContain('<meta name="twitter:card" content="summary">');
+  });
+
+  it("renders the JSON-LD once, nonced, so the strict policy admits it", async () => {
+    const text = await getHomeHtml();
+    const scripts = text.match(/<script type="application\/ld\+json" nonce="[^"]+">/g) ?? [];
+    expect(scripts.length).toBe(1);
+  });
+});
 
 describe("Layout — dead mobile-nav-markup regression guards", () => {
   it("contains no data-ref nav-toggle/nav-menu/nav-link markup in double-quoted form", async () => {

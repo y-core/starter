@@ -1,62 +1,60 @@
 /** @jsxImportSource @y-core/forge/jsx */
 
-import { assets, CoreIcon } from "@assets";
+import { assets, CoreIcon, ICON_LINKS } from "@assets";
+import type { PageMeta } from "@y-core/forge/app";
+import { mergeMeta, metaTags } from "@y-core/forge/app";
 import { rawHtml } from "@y-core/forge/http";
 import type { JSXNode } from "@y-core/forge/jsx";
 import { FOUC_SCRIPT, Navbar, ThemeToggle } from "@y-core/forge/ui/chrome";
 import { Separator } from "@y-core/forge/ui/core";
 
-import type { RenderContext } from "../app/context";
-import { site } from "../model/site.content";
+import type { RenderContext } from "../app/types";
+import { site, siteMeta } from "../model/site.content";
 import { routes } from "../routes";
 import { primaryNav, resolveNavHref } from "./nav";
 
 interface LayoutProps {
   ctx: RenderContext;
+  /** Merged over `siteMeta`; the shell is the only caller, and a `ShellSlot` always resolves one. */
+  meta: PageMeta;
   children?: JSXNode | undefined;
 }
 
-export function Layout({ ctx, children }: LayoutProps) {
+// Composed here rather than by each caller: a page states the thing it is, and which site it belongs
+// to is the shell's fact — including for the auth, showcase and log pages, whose titles forge writes.
+/** A page's title as the document carries it, the site's own left uncomposed. */
+function documentTitle(title: string): string {
+  return title === site.title ? title : `${title} — ${site.title}`;
+}
+
+/** Whether a descriptor asks to be kept out of the index, in either spelling `robots` allows. */
+function hidden(robots: PageMeta["robots"]): boolean {
+  return robots === "noindex" || (Array.isArray(robots) && robots.includes("noindex"));
+}
+
+export function Layout({ ctx, meta, children }: LayoutProps) {
   const { nonce, baseUrl } = ctx;
-  const jsonLd = JSON.stringify({
-    "@context": "https://schema.org",
-    "@type": "Organization",
-    name: site.title,
-    description: site.description,
-    url: baseUrl ? `${baseUrl}/` : undefined,
-  });
+  const merged = mergeMeta(siteMeta(baseUrl), meta);
+  // The base names the site root, which on a `noindex` page would point a crawler at a URL other
+  // than the one it was just told to drop. Cleared here, so no page has to restate it.
+  const canonical = hidden(merged.robots) ? undefined : merged.canonical;
   return (
     <html lang='en'>
       <head>
         <meta charset='utf-8' />
         <meta name='viewport' content='width=device-width, initial-scale=1' />
-        <title>{site.title}</title>
-        <meta name='description' content={site.description} />
 
-        <meta property='og:title' content={site.title} />
-        <meta property='og:description' content={site.description} />
-        <meta property='og:type' content='website' />
-        {baseUrl && <meta property='og:url' content={`${baseUrl}/`} />}
+        {metaTags({ ...merged, title: documentTitle(merged.title), canonical }, { nonce })}
 
-        <meta name='twitter:card' content='summary' />
-        <meta name='twitter:title' content={site.title} />
-        <meta name='twitter:description' content={site.description} />
-
-        {baseUrl && <link rel='canonical' href={`${baseUrl}/`} />}
-
-        <link rel='icon' href='/favicon.ico' sizes='48x48' />
-        <link rel='icon' href='/favicon.svg' type='image/svg+xml' />
-        <link rel='apple-touch-icon' href='/apple-touch-icon.png' />
-        <link rel='manifest' href='/site.webmanifest' />
+        {ICON_LINKS.map((link) => (
+          <link rel={link.rel} href={link.href} type={link.type} sizes={link.sizes} />
+        ))}
 
         {/* FOUC_SCRIPT before stylesheet to set data-theme-preference */}
         <script nonce={nonce}>{rawHtml(FOUC_SCRIPT)}</script>
 
         <link rel='stylesheet' href={assets.path("css/main.css")} />
 
-        <script nonce={nonce} type='application/ld+json'>
-          {rawHtml(jsonLd)}
-        </script>
         <script nonce={nonce} src={assets.path("js/main.js")} type='module' />
       </head>
       {/* Sticky footer: the column is at least a viewport tall and the footer takes the slack through
@@ -69,7 +67,7 @@ export function Layout({ ctx, children }: LayoutProps) {
           content — so a long log table would grow the document no matter how the items flex. `h-dvh`
           makes the height definite, which is what lets `flex-1` hand the page a fixed box to scroll
           inside; `overflow-hidden` keeps the shell itself from scrolling. Every other page is untouched. */}
-      <body class='flex min-h-dvh flex-col has-[[data-fill-viewport]]:h-dvh has-[[data-fill-viewport]]:overflow-hidden'>
+      <body class='flex min-h-dvh flex-col has-data-fill-viewport:h-dvh has-data-fill-viewport:overflow-hidden'>
         <a
           href='#main-content'
           class='sr-only focus-visible:not-sr-only focus-visible:absolute focus-visible:top-4 focus-visible:left-4 focus-visible:z-50 focus-visible:rounded-lg focus-visible:bg-primary focus-visible:px-4 focus-visible:py-2 focus-visible:text-sm focus-visible:font-semibold focus-visible:text-primary-foreground'>
@@ -100,6 +98,8 @@ export function Layout({ ctx, children }: LayoutProps) {
                 aria-label='Primary'
                 config={primaryNav}
                 resolveHref={resolveNavHref}
+                activeFilters={ctx.nav.activeFilters}
+                slots={ctx.nav.slots}
                 icon={CoreIcon}
                 collapsedAs='drawer'
                 class='static z-auto bg-transparent'

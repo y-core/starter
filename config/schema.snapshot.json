@@ -1,0 +1,8 @@
+{
+  "version": 5,
+  "desired": {
+    "node_modules/@y-core/forge/src/auth/schema.sql": "b3758d53f64813c100906f6567ba4356148c4303ba0e7fd715a56ab32b3feca3",
+    "config/schema.sql": "75ed3a8c81e81c552bb5ad15763ab5de42b20a3ec7244ec1ad36c71e1ad06cd1"
+  },
+  "migrationsDigest": "e72156d224f77762e4416599c009313be1a99070a04a10566a01d3b52319e0b6"
+}

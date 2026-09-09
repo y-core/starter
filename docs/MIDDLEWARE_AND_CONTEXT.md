@@ -60,7 +60,7 @@ throw still yields a hardened error page, and because it injects the per-request
 reading `getNonce(c)` depends on; `requestLogger` runs after both, since it reads the request ID
 when building log entries.
 
-The binding check is this app's own addition, placed *within* that order rather than being part of
+The binding check is this app's own addition, placed _within_ that order rather than being part of
 it. It sits after the headers because a shape refusal throws: run first, its 500 escapes before the
 headers exist. Measured on the real chain, a `LOGS_KV` of the wrong shape loses
 `Strict-Transport-Security`, `Cross-Origin-Opener-Policy`, `Cross-Origin-Resource-Policy`,
@@ -77,6 +77,15 @@ limiter), while one present with the wrong shape still fails.
 `trustCfHeaders: true` is deliberate: Cloudflare strips and re-writes `CF-*` headers at the edge, so
 on Workers they are trustworthy. Forge defaults to distrust because the same code behind a bare
 proxy would let a caller forge them.
+
+The chain continues past the snippet with the session and the identity: `authSessionGuard`, then
+`navIdentityGuard`, then the CSRF guards and the auth guard groups. `navIdentityGuard` wraps forge's
+`resolveAuth` and **admits everyone** — it establishes an identity where the session carries one and
+leaves an anonymous request untouched; what a visitor may reach is decided by the guards after it.
+It runs on every path but `/api/*`, because the shared navbar renders on all of them, the 404 page
+included, and the JSON API is the one prefix that would read the user store for an identity nothing
+in its response depends on. A `requireAuth` further down reuses what it established rather than
+resolving again, so a guarded route costs one store read, not two.
 
 ### 1b. createSecurityHeaders — CSP and Nonce
 
@@ -169,8 +178,9 @@ from `src/app/context.ts` — do not reconstruct inline.
 
 Full-page controllers use `definePage({ loader, view })` from `@y-core/forge/app`. The
 `loader` receives `(c, config)` and returns data; the `view` receives `(c, config, state)`
-and calls `renderPage(<View …/>)` from `@y-core/forge/jsx`. The controller materializes
-`ctx` via `renderContext` in the `loader` and passes it as a view prop.
+and calls `renderShell(c, <View …/>, slot)` from `@y-core/forge/app`. The shell materializes
+`ctx` via `renderContext`, so a controller builds one only when it needs a CSRF token or the
+Turnstile site key — which today is the home controller alone.
 
 ### 2d. Accessing Context Variables
 
@@ -291,6 +301,7 @@ requirement.
       csrfPath?: string
     ): Promise<RenderContext> {
       return {
+        nav: await resolveNav(c),
         baseUrl: config.site.url.origin,
         csrfToken: csrfPath ? await mintCsrf(c, csrfPath) : "",
         nonce: getNonce(c),
@@ -310,11 +321,18 @@ omit `csrfPath` (e.g. the 404 controller and the log viewer) receive an empty to
       csrfToken: string            // placed in a hidden form input
       nonce: string                // placed on inline <script> and <style> elements
       turnstileSiteKey?: string    // Cloudflare Turnstile widget site key
+      nav: AuthNav                 // spread onto Navbar: activeFilters and slots
     }
 
 `baseUrl` and `turnstileSiteKey` are optional because they may be absent in minimal
 configurations (e.g., testing without Turnstile). `csrfToken` and `nonce` are always
 present — they are required for every form and every inline script respectively.
+
+`nav` is forge's `authNav` answering for this request: the filter tokens the viewer holds, and
+the sign-out control when they have a session to end. `resolveNav` is wired once at module scope
+in `context.ts`, not per request, so the signing key is imported once per isolate rather than
+once per page. An anonymous request gets the tokens and an empty slot map, and mints nothing.
+See `UI_GUIDE.md` §6d for what that means for caching.
 
 ### 4c. mintCsrf Scope
 

@@ -12,17 +12,17 @@ description: "The view layer and layout composition, the HTMX interaction patter
 ## 0. Quick Reference
 
 - §1 views/ directory: layout, home, not-found (logs rendered by showLogsController via forge `loadLogViewer`)
-- §1a layout.tsx — Root Layout
+- §1a layout.tsx — the chrome the shell renders
 - §1b home.tsx — Home Page
 - §1c Log Viewer — showLogsController
 - §1d not-found.tsx — 404 Page
-- §2 Layout: FOUC_SCRIPT, nonce, deferred scripts
+- §2 The document shell: the single writer of `<html>`, FOUC_SCRIPT, nonce, deferred scripts
 - §2a Nonce on All Inline Scripts
 - §2b FOUC Prevention
 - §2c Deferred Scripts and Resumable Scopes
-- §3 Home view: hero, contact form, JSON-LD, OG meta
+- §3 Home view: hero, contact form, page meta
 - §3a Contact Form HTMX Pattern
-- §3b JSON-LD and OG Meta
+- §3b Page Meta, JSON-LD and OG
 - §4 HTMX patterns: hx-post, hx-target, hx-swap
 - §4a Fragment Target Pattern
 - §4b HX-Request Header Enforcement
@@ -36,6 +36,7 @@ description: "The view layer and layout composition, the HTMX interaction patter
 - §6a FOUC_SCRIPT Import and Placement
 - §6b Theme Resumable Scope
 - §6c Navbar Component and Navbar Resumable Scope
+- §6d The Navbar Varies By Identity — no HTML cache layer without `Vary: Cookie`
 
 ---
 
@@ -45,21 +46,25 @@ The `src/views/` directory contains all forge JSX components that render full pa
 page fragments (`@jsxImportSource @y-core/forge`). Each file exports one primary component.
 Views receive all data via props and never call services or perform validation directly.
 
-### 1a. layout.tsx — Root Layout
+### 1a. layout.tsx — the chrome the shell renders
 
-Wraps all pages — composed by each page view as `<Layout ctx={ctx}>…</Layout>` (the
-`children` Slot). Injects: FOUC_SCRIPT inline (synchronous, in head), CSS link, nav,
-deferred client scripts. All inline scripts carry `nonce={ctx.nonce}`. `Layout` sources
-`site` itself via `import { site } from "../model/site.content"`.
+`Layout` is the whole document: FOUC_SCRIPT inline (synchronous, in head), meta tags, CSS link, nav,
+footer, deferred client scripts. All inline scripts carry `nonce={ctx.nonce}`. It sources `site`
+itself via `import { site } from "../model/site.content"`.
 
-    export function Layout({ ctx, children }: { ctx: RenderContext; children?: JSXNode }) {
-      const { nonce } = ctx
+**No page view composes it.** `Layout` has exactly one caller — `appShell` in `src/app/shell.tsx` —
+and every page reaches it through the shell (§2). A view that wrote `<Layout>` itself would render a
+second `<html>` inside the shell's.
+
+    export function Layout({ ctx, meta, children }: { ctx: RenderContext; meta: PageMeta; children?: JSXNode }) {
+      const { nonce, baseUrl } = ctx
+      const merged = mergeMeta(siteMeta(baseUrl), meta)
       return (
         <html lang="en">
           <head>
             <meta charset="utf-8" />
             <meta name="viewport" content="width=device-width, initial-scale=1" />
-            <title>{site.title}</title>
+            {metaTags({ ...merged, title: documentTitle(merged.title) }, { nonce })}
             {/* FOUC_SCRIPT before stylesheet — sets data-theme-preference synchronously */}
             <script nonce={nonce}>{rawHtml(FOUC_SCRIPT)}</script>
             <link rel="stylesheet" href={assets.path("css/main.css")} />
@@ -74,16 +79,22 @@ deferred client scripts. All inline scripts carry `nonce={ctx.nonce}`. `Layout` 
       )
     }
 
-`RenderContext` is produced by `renderContext(c, config, csrfPath?)` in the controller's
-`loader` and passed to the page view as a prop. The page view owns its `<Layout ctx={ctx}>…</Layout>`
-composition. `Layout` sources the site title from `../model/site.content`; asset paths come from
-the `@assets` alias (`assets.path(…)`). The controller's `view` calls `renderPage(<HomeView ctx={ctx} …/>)`
-from `@y-core/forge/jsx`. See [MIDDLEWARE_AND_CONTEXT.md](./MIDDLEWARE_AND_CONTEXT.md) §4.
+`meta` is a full `PageMeta`, not a partial: the shell is the only caller and a `ShellSlot` always
+carries one resolved. `Layout` merges it over `siteMeta` and composes the title — `documentTitle`
+leaves the site's own name uncomposed, so a page naming `site.title` renders `Forge Studio` and a
+page naming `Catalog` renders `Catalog — Forge Studio`. A `noindex` page has its canonical cleared,
+since the base URL would point a crawler at a page other than the one it was just told to drop.
+
+`RenderContext` — `nonce` and `baseUrl` here — is produced by `renderContext(c, config, csrfPath?)`,
+which the shell calls once per request. A page view builds its own only when it needs a CSRF token
+or the Turnstile site key (§1b). See [MIDDLEWARE_AND_CONTEXT.md](./MIDDLEWARE_AND_CONTEXT.md) §4.
 
 ### 1b. home.tsx — Home Page
 
-Full home page with hero section and contact form. Receives `RenderContext` for nonce,
-CSRF token, and Turnstile site key. Emits JSON-LD and OG meta in the `<head>` slot.
+Full home page with hero section and contact form — a `<main>`, not a document. It is the one page
+whose controller still builds a `RenderContext`, for the CSRF token bound to `/api/contact` and the
+Turnstile site key; the shell supplies everything else. Its controller names `meta: { title: site.title }`,
+which `documentTitle` leaves uncomposed, so the page speaks with the site's own descriptor (§3b).
 
 Its chrome comes from forge, not from hand-rolled class strings: the two hero CTAs and the submit
 are `Button` (the anchors under `asChild`, so the box, tone, size, focus ring and the
@@ -96,29 +107,51 @@ section padding — stays raw markup; that is view rendering, which is legitimat
 ### 1c. Log Viewer — showLogsController
 
 The `/showcase/logs` page is rendered by `showLogsController` in `src/controllers/show.logs.tsx`.
-It uses `definePage` with a `loader` that calls `loadLogViewer` from `@y-core/forge/logging/show`,
-passing this app's `renderContext` and `Layout` so the viewer renders inside the app's shell. The
-loader returns a `Response`, so the `view` is a pass-through. There is no `logs.tsx` view component
-in the app — the log viewer UI comes from forge.
+It uses `definePage` with a `loader` that calls `loadLogViewer(c, options)` from
+`@y-core/forge/logging/show`. The viewer builds no document of its own: it renders through the shell
+`worker.ts` registers, so it is inside the app's chrome by registration rather than by anything this
+controller passes. The loader returns a `Response`, so the `view` is a pass-through. There is no
+`logs.tsx` view component in the app — the log viewer UI comes from forge.
 
 ### 1d. not-found.tsx — 404 Page
 
 Built on `EmptyState` / `.Figure` / `.Description` / `.Actions`, with a `Button asChild` return-home
 link inside `.Actions` — a 404 is the canonical empty state.
 
-The heading is a plain `<h1>`, deliberately **not** `EmptyState.Title`: that renders an `<h3>`, and
-this is the page's only heading, so adopting it would leave the document with no `<h1>` for a screen
-reader to land on. Forge exposes no level prop; until it does, the heading is the app's. The
-`NotFoundView` in
-`src/views/not-found.tsx` owns its `<Layout ctx={ctx}>` composition. Rendered by the
-`notFoundController` in `src/controllers/not-found.tsx`, which marshals `renderContext`
-(no `csrfPath` → empty token) and calls `renderPage(<NotFoundView ctx={ctx} />, { status: 404 })`
-from `@y-core/forge/jsx`. `notFoundController` is passed to
-`applyAssets(app, { notFoundView: notFoundController })` in `worker.ts` as the catch-all 404 handler.
+The title is `EmptyState.Title` carrying `level={1}`: it defaults to an `<h3>`, and this is the
+page's only heading, so the document would otherwise have no `<h1>` for a screen reader to land on.
+
+`NotFoundView` takes no props — it is a `<main>`, and the chrome is the shell's. Rendered by the
+`notFoundController` in `src/controllers/not-found.tsx`, which calls
+`renderShell(c, <NotFoundView />, { mount: "app", page: "not-found", meta: { title: "Page not found", robots: "noindex" } }, { status: 404 })`.
+`notFoundController` is passed to `createApp` as `notFound` in `worker.ts` — the one answer to an
+unmatched URL, whether the router found no route or the asset catch-all declined.
 
 ---
 
-## 2. Layout Component Patterns
+## 2. The Document Shell
+
+`src/app/shell.tsx` registers `appShell` with `createApp`, and it is the **single writer of
+`<html>`** in this application. Every page — this app's own, forge's auth pages, the showcase and the
+log viewer — is content handed to that shell, which resolves the `RenderContext` once and renders
+`<Layout>` around it.
+
+A controller reaches the shell with `renderShell` from `@y-core/forge/app`:
+
+    return renderShell(
+      c,
+      <main id="main-content">…</main>,
+      { mount: "app", page: "welcome", meta: { title: "Welcome back", robots: "noindex" } },
+      { status: 200 },
+    )
+
+- **`content` is a `<main>`, never a document.** The `<head>`, `<body>`, nav and footer are `Layout`'s.
+- **`slot.meta` is a full `PageMeta`**, so `title` is required; `Layout` merges it over `siteMeta`.
+- **`slot.mount` is an open string.** `app` is what this application's own pages pass; forge's
+  mountables pass `auth`, `showcase` and `logs`. `appShell` branches on none of them, and a branch
+  added there needs a default arm.
+- **A fragment never reaches the shell.** An HTMX route returns `fragmentResponse`; see
+  [ERROR_HANDLING.md](./ERROR_HANDLING.md) §2b.
 
 ### 2a. Nonce on All Inline Scripts
 
@@ -163,6 +196,7 @@ blocking first paint. Two kinds live there:
 
     <script defer src="/assets/js/main.js" nonce={ctx.nonce} />
 
+
 The entry point is `src/client/main.ts`. Add new client-side initializers there.
 
 ---
@@ -201,26 +235,31 @@ fragment returned by the handler.
 fragment. The handler returns `renderSuccess(c, <SuccessFragment />)` or
 `renderValidationErrors(c, errors)`.
 
-### 3b. JSON-LD and OG Meta
+### 3b. Page Meta, JSON-LD and OG
 
-Structured data and Open Graph tags are emitted in a `<head>` slot passed to `Layout`.
+No page writes a `<head>` tag. A page names its descriptor as the `meta` of the `ShellSlot` it hands
+`renderShell` (§2); `Layout` merges it over `siteMeta` from `model/site.content.ts` and hands the
+result to forge's `metaTags` — the one place a descriptor becomes markup. Forge documents the
+descriptor itself; `warden search --dependency "meta descriptor"` is how that section is reached,
+since the installed library's documents are not citable by name here.
 
-    <script type="application/ld+json" nonce={ctx.nonce}>
-      {JSON.stringify({
-        "@context": "https://schema.org",
-        "@type": "WebPage",
-        name: "Forge Studio",
-        url: "https://example.com",
-      })}
-    </script>
-    <meta property="og:title" content="Forge Studio" />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://example.com" />
-    <meta property="og:description" content="Build with Forge." />
+    { mount: "app", page: "account", meta: { title: "Your account", robots: "noindex" } }
 
-The `nonce` attribute on the JSON-LD `<script>` is required by CSP even though the
-script type is not executable JavaScript. Omitting it causes CSP violations in strict
-configurations.
+Three rules hold here, and each is enforced in `views/layout.tsx` rather than by every caller:
+
+- **A page states only what is its own.** Description, OG, Twitter and JSON-LD live on `siteMeta`
+  and are inherited; a page names its title and, where it applies, its `robots`.
+- **The title is composed, the site's own is not.** `Layout` renders `Sign in — Forge Studio` from a
+  page's `Sign in`, and the bare `Forge Studio` when the merged title is already the site's — which
+  is why the home page names `title: site.title` rather than a page title of its own.
+- **A `noindex` page carries no canonical.** The base names the site root, which on a page a crawler
+  was told to drop would point it at a different URL — conflicting signals.
+
+The mounted pages — auth, showcase and the log viewer — arrive through `app/shell.tsx` carrying a
+descriptor forge wrote, `robots: "noindex"` included. This app never restates it.
+
+The `nonce` on the JSON-LD `<script>` is required by CSP even though the script type is not
+executable JavaScript; `metaTags` receives it and renders no script without one.
 
 ---
 
@@ -315,7 +354,7 @@ would otherwise inline:
 `--tracking-eyebrow` exists so the hero eyebrow reads `tracking-eyebrow` rather than
 `tracking-[0.3em]`; FORGE_CONSUMPTION §5b forbids inlining a step in markup.
 
-**Reserved namespaces matter.** `cn`'s class-group table reads the *root* of a utility, so a custom
+**Reserved namespaces matter.** `cn`'s class-group table reads the _root_ of a utility, so a custom
 name must extend a root the table already knows. A custom font size must be `--text-size-hero`, not
 `--text-hero`, or `cn` reads `text-hero` as a colour.
 
@@ -410,3 +449,25 @@ Two consequences worth knowing before composing it:
   panel is `hidden group-open:flex md:flex`). Content that must stay visible in the
   mobile header — brand mark, theme toggle — belongs beside `<Navbar>`, not in a
   `NavSlot`.
+
+### 6d. The Navbar Varies By Identity
+
+`activeFilters` and `slots` come from forge's `authNav`, resolved once per request into
+`ctx.nav` (`src/app/context.ts`) and spread onto `Navbar` by `Layout`. Each item names the
+tokens that may see it with `AUTH_NAV_FILTERS`; `navIdentityGuard` in
+`src/app/middleware.ts` is what establishes the identity those tokens are read off, on
+every path but `/api/*`.
+
+**Every page response is therefore identity-dependent, and nothing here sets
+`Cache-Control` or `Vary`.** Today that is safe: Wrangler serves the static assets, and
+nothing caches the Worker's HTML. It stops being safe the moment anything does — a
+`cf.cacheEverything` route, a Cache API layer, a CDN rule in front of the Worker — which
+would hand one visitor's navbar to the next. **Add `Vary: Cookie` in the same change that
+adds any HTML cache layer, or do not add one.**
+
+**A hidden item is in the markup, not absent from it.** An anonymous page's source still
+carries the account and administrative entries, each with `hidden` and its `data-filter`
+tokens, because the navbar scope re-applies the filters on the client. The guards are what
+enforce access, so this discloses a route name and never data — but it is a deliberate
+trade for the runtime re-sync, not an oversight. Prune the `NavDefinition` server-side
+instead only if you are also giving up that re-sync.

@@ -33,8 +33,7 @@ description: "The minimum environment fixture and its per-field requirements, th
 - §6a Missing HX-Request → 403
 - §6b Wrong Origin → 403
 - §6c Invalid CSRF Token → 403
-- §6d Filled Honeypot → 400
-- §6e Rule: No 200 on Guard Failure
+- §6d Rule: No 200 on Guard Failure
 
 ---
 
@@ -61,15 +60,19 @@ are relative to `tests/` accordingly.
 Each field is required unless noted. Missing bindings cause the middleware chain to throw or return
 500 rather than 200.
 
-| Key | Requirement |
-|---|---|
-| `ASSETS` | `{ fetch: async () => Response }` — controls static-asset passthrough |
-| `SITE_ORIGIN` | Optional — any `https://` URL (or `http://localhost`); used for origin validation in guards. A fixture that omits it falls through to the `SITE_ORIGIN` literal in `src/app/config.ts`, so the guards then allowlist the production origin rather than the fixture's. Set it whenever a test asserts on an origin |
-| `CSRF_SECRET` | 64 hex chars (32 bytes); must be a valid key for `importCsrfKey` |
-| `EMAIL_API_KEY` | Any string; email delivery is stubbed via `globalThis.fetch` |
-| `TURNSTILE_SECRET_KEY` / `TURNSTILE_SITE_KEY` | Any strings |
-| `LOGS_KV` | Optional — logging middleware degrades gracefully when absent |
-| `RATE_LIMITER` | Optional — rate-limit middleware no-ops when absent |
+| Key                                           | Requirement                                                                                                                                                                                                                                                                                                       |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ASSETS`                                      | `{ fetch: async () => Response }` — controls static-asset passthrough                                                                                                                                                                                                                                             |
+| `SITE_ORIGIN`                                 | Optional — any `https://` URL (or `http://localhost`); used for origin validation in guards. A fixture that omits it falls through to the `SITE_ORIGIN` literal in `src/app/config.ts`, so the guards then allowlist the production origin rather than the fixture's. Set it whenever a test asserts on an origin |
+| `CSRF_SECRET`                                 | 64 hex chars (32 bytes); must be a valid key for `importCsrfKey`                                                                                                                                                                                                                                                  |
+| `EMAIL_API_KEY`                               | Any string; email delivery is stubbed via `globalThis.fetch`                                                                                                                                                                                                                                                      |
+| `TURNSTILE_SECRET_KEY` / `TURNSTILE_SITE_KEY` | Any strings                                                                                                                                                                                                                                                                                                       |
+| `AUTH_KEY_RING`                               | 64 hex chars (32 bytes); must import as an `AuthKeyRing`                                                                                                                                                                                                                                                          |
+| `SESSION_SECRET`                              | 64 hex chars (32 bytes); signs the `__Host-session` cookie                                                                                                                                                                                                                                                        |
+| `AUTH_KV`                                     | **Required** — `fakeKV()` from `@y-core/forge/testing`. `validateBindings` is non-optional here, so a fixture omitting it throws before the handler runs                                                                                                                                                          |
+| `AUTH_DB`                                     | **Required** — `fakeD1()` from `@y-core/forge/testing`, or `fakeAuthD1()` when the test needs real auth rows                                                                                                                                                                                                      |
+| `LOGS_KV`                                     | Optional — logging middleware degrades gracefully when absent                                                                                                                                                                                                                                                     |
+| `RATE_LIMITER`                                | Optional — rate-limit middleware no-ops when absent                                                                                                                                                                                                                                                               |
 
 ---
 
@@ -164,7 +167,6 @@ path-bound, so the path must match the route under test. Call it once per `descr
       name: "Test User",
       email: "test@example.com",
       message: "Hello world message",
-      __hp: "",    // honeypot field — must be empty or guard rejects
     })
 
     const res = await app.request("/api/contact", {
@@ -278,7 +280,6 @@ Write explicit tests for each rejection path so regressions are caught before de
       name: "Test User",
       email: "test@example.com",
       message: "Hello world message",
-      __hp: "",
     })
 
     const res = await app.request("/api/contact", {
@@ -292,28 +293,7 @@ Write explicit tests for each rejection path so regressions are caught before de
     }, MINIMUM_ENV)
     expect(res.status).toBe(403)
 
-### 6d. Filled Honeypot → 400
-
-    const honeypotFormData = new URLSearchParams({
-      __csrf: csrfToken,
-      name: "Bot",
-      email: "bot@example.com",
-      message: "Spam",
-      __hp: "filled",    // honeypot non-empty → bot signal
-    })
-
-    const res = await app.request("/api/contact", {
-      method: "POST",
-      headers: {
-        "HX-Request": "true",
-        "Origin": "https://example.com",
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: honeypotFormData.toString(),
-    }, MINIMUM_ENV)
-    expect(res.status).toBe(400)  // honeypot returns 400; 403 is for guard failures
-
-### 6e. Rule: No 200 on Guard Failure
+### 6d. Rule: No 200 on Guard Failure
 
 See `TESTING.md` §5d: an unexpected 200 from a guarded route is a defect
 in the guard, never an assertion to adjust.

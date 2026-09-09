@@ -5,7 +5,7 @@
 // testing keys answer for any token at all.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
-import { type DevServer, startDevServer } from "./dev-server";
+import { type DevServer, startDevServer } from "@y-core/forge/testing/workerd";
 
 const ENTRY = "src/worker.dev.ts";
 
@@ -17,6 +17,8 @@ const VARS = {
   TURNSTILE_SECRET_KEY: "1x0000000000000000000000000000000AA",
   TURNSTILE_SITE_KEY: "1x00000000000000000000AA",
   TURNSTILE_DEV_HOSTNAME: "example.com",
+  AUTH_KEY_RING: "9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c3d5e",
+  SESSION_SECRET: "6f2b4a7c0d3e5f7a9b1c3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e",
 };
 
 const VALID = {
@@ -38,7 +40,7 @@ const EXPECTED_DELIVERY_ERROR =
 let server: DevServer;
 
 beforeAll(async () => {
-  server = await startDevServer(ENTRY, VARS);
+  server = await startDevServer({ entry: ENTRY, vars: VARS, readyPath: "/api/health", capture: true });
 }, 200_000);
 
 afterAll(() => {

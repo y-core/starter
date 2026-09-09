@@ -7,8 +7,18 @@
     "build:assets": "forge assets build all --minify --root . --config config/assets.ts --out .forge/assets.ts",
     "cf:status": "forge cf sync",
     "cf:sync": "forge cf sync --commit",
+    "db:backup": "forge db backup",
+    "db:compose": "forge db migrate compose",
+    "db:lint": "forge db lint --strict",
+    "db:migrate": "forge db migrate",
+    "db:migrate:remote": "forge db migrate --target remote",
+    "db:reset": "forge db reset",
+    "db:restore": "forge db restore",
+    "db:schema:check": "forge db schema check",
+    "db:status": "forge db migrate status",
     "dev": "bun run build:assets && wrangler dev src/worker.dev.ts --live-reload",
     "dev:browser": "bun run build:assets && wrangler dev src/worker.dev.ts --var SITE_ORIGIN:https://localhost:8787 --live-reload",
+    "dev:forge": "bun run ../forge/src/tooling/dev/sync.ts",
     "fix": "forge verify --fix",
     "lint": "forge verify --only lint",
     "test": "bun test tests/",
@@ -18,7 +28,7 @@
     "verify:fast": "forge verify --mode fast"
   },
   "dependencies": {
-    "@y-core/forge": "https://codeload.github.com/y-core/forge/tar.gz/refs/tags/v0.1.8"
+    "@y-core/forge": "https://github.com/y-core/forge/releases/download/v0.1.14/y-core-forge-0.1.14.tgz"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.0",
@@ -30,7 +40,7 @@
     "tailwindcss": "^4.3.1",
     "typescript": "^7.0.2",
     "urlpattern-polyfill": "^10.1.0",
-    "wrangler": "^4.105.0"
+    "wrangler": "^4.129.1"
   },
   "overrides": {
     "ws": "^8.20.1"

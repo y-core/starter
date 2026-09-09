@@ -50,14 +50,13 @@ form validation:
 The `status` option defaults to `400` when omitted. Always pass the semantically correct
 status so HTMX and monitoring systems classify the failure accurately:
 
-| Scenario                         | Status |
-| -------------------------------- | ------ |
-| Bot / honeypot detected          | 400    |
-| CAPTCHA verification failed      | 400    |
-| CSRF token invalid               | 403    |
-| Security guard rejected request  | 403    |
-| External service unavailable     | 503    |
-| Unexpected server error          | 500    |
+| Scenario                        | Status |
+| ------------------------------- | ------ |
+| CAPTCHA verification failed     | 400    |
+| CSRF token invalid              | 403    |
+| Security guard rejected request | 403    |
+| External service unavailable    | 503    |
+| Unexpected server error         | 500    |
 
 ### 1b. renderSuccess for Completed Actions
 
@@ -86,11 +85,12 @@ See [INPUT_VALIDATION.md](./INPUT_VALIDATION.md) §1b for the full parse flow.
 
 ### 2a. renderPage for Full-Page Handler Views
 
-`renderPage` from `@y-core/forge/jsx` converts a JSX tree to an `HtmlResponse`. It is
-called inside the `view` function of a `definePage` controller:
+A full page is rendered with `renderShell` from `@y-core/forge/app`, called inside the `view`
+function of a `definePage` controller. It hands the content to the shell registered in `worker.ts`
+and converts the resulting document to an `HtmlResponse` via `renderPage`:
 
     // In a full-page controller (src/controllers/home.tsx):
-    import { renderPage } from "@y-core/forge/jsx"
+    import { renderShell } from "@y-core/forge/app"
 
     handler: definePage<AppEnv, AppConfig, HomeData>({
       cache: "no-store",
@@ -98,12 +98,17 @@ called inside the `view` function of a `definePage` controller:
         ctx: await renderContext(c, config, routes.contact.href()),
         content,
       }),
-      view: (_c, _cfg, state) =>
-        renderPage(<HomeView ctx={state.data.ctx} content={state.data.content} />),
+      view: (c, _cfg, state) =>
+        renderShell(c, <HomeView ctx={state.data.ctx} content={state.data.content} />, {
+          mount: "app",
+          page: "home",
+          meta: { title: site.title },
+        }),
     })
 
-The `<Layout>` is composed by the view (`HomeView` returns `<Layout ctx={ctx}>…</Layout>`).
-`renderPage(node, init?)` accepts an optional `init` for status code overrides (e.g. 404).
+The chrome is the shell's, not the view's: `renderShell(c, content, slot, init?)` renders the
+content through the shell registered in `worker.ts`, and its optional `init` carries status code
+overrides (e.g. 404). `renderPage` remains what the shell itself is rendered with.
 
 ### 2b. Never Mix renderPage with HTMX Fragment Routes
 
@@ -118,6 +123,12 @@ produces broken UI.
 See `BOUNDARIES.md` §5 for the fail-closed posture, the ban on
 swallowing a verification error, and `BOUNDARIES.md` §2d for why a
 policy violation is 403 rather than 400.
+
+The app's own guards — `htmxOnlyGuard`, `originGuard`, `rateLimitGuard` — answer in plain text, as
+every forge transport guard does; only handlers answer in a fragment or a page. A guard runs before
+any handler, so it knows neither the shell nor the route's render mode. The consequence to design
+for: an HTMX target swaps the raw string, so a guard whose refusal must look like anything needs its
+own answer rather than a fragment forge would have to guess.
 
 ---
 
@@ -173,7 +184,13 @@ verbose error details in development:
     const app = createApp<AppEnv>({
       config: configStore,
       isDebug: (c) => configStore.get(c.env).site.debug,
+      notFound: notFoundController,
     })
+
+One exception is not an error: a client that disconnects mid-request reaches the boundary as a
+throw, and forge answers a bodyless 499 without logging or rendering. This app's error pages also
+carry a `Reference: <id>` line, because `registerMiddleware` runs `requestId` first — forge renders
+it from context and generates nothing, so an app that dropped that middleware would show no line.
 
 When `isDebug` returns `true` the error boundary includes the error message in the
 response for debugging. In production, `isDebug` must return `false` (or be omitted).

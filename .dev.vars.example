@@ -36,3 +36,10 @@ TURNSTILE_SITE_KEY=1x00000000000000000000AA
 # from dash.cloudflare.com/turnstile, omit it — siteverify then returns the browser's own hostname.
 # Only src/worker.dev.ts consults it; in production it is inert.
 TURNSTILE_DEV_HOSTNAME=example.com
+
+# Auth key ring — comma-separated hex root secrets, newest first, each >= 64 hex chars.
+# Rotation is prepending a secret. Generate with: openssl rand -hex 32
+AUTH_KEY_RING=your-64-char-hex-auth-root-secret
+
+# Session cookie signing secret — at least 32 characters; createSignedCookie throws below that.
+SESSION_SECRET=your-64-char-hex-session-secret
