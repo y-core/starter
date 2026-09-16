@@ -25,6 +25,7 @@ import type { AuthEnrolmentGuardOptions, AuthGuardOptions, AuthRequestServices, 
 import { authEnrolmentPaths, authPaths, createAuthGuards } from "@y-core/forge/auth/web";
 import type { AppContext as ForgeAppContext, Middleware } from "@y-core/forge/context";
 import { contextVar, getAppContext } from "@y-core/forge/context";
+import type { DevAllowance } from "@y-core/forge/dev";
 import { createSignedCookie, createKVSessionStorage, sessionCtx, sessionMiddleware } from "@y-core/forge/session";
 import { createD1Client } from "@y-core/forge/storage/db";
 
@@ -210,7 +211,7 @@ async function buildAuthRequestServices(c: ForgeAppContext<AppEnv>): Promise<Aut
 }
 
 /** The middleware stack for every guarded auth route group, built off forge's own group table. */
-export function authGuardGroups(): MiddlewareGuardGroup<AppEnv>[] {
+export function authGuardGroups(dev?: DevAllowance): MiddlewareGuardGroup<AppEnv>[] {
   return createAuthGuards<AppEnv>({
     routes: { auth: authRouteMap, account: accountRouteMap, admin: adminRouteMap },
     auth: authIdentityOptions,
@@ -219,6 +220,11 @@ export function authGuardGroups(): MiddlewareGuardGroup<AppEnv>[] {
     // cross-origin defence at all: their group declares no guards, so it is emitted for the origin
     // check alone.
     origin: originPolicy,
-    rateLimit: { auth: authLimitPolicy, "auth.verify": authLimitPolicy, account: consoleLimitPolicy, admin: consoleLimitPolicy },
+    rateLimit: {
+      auth: authLimitPolicy(dev),
+      "auth.verify": authLimitPolicy(dev),
+      account: consoleLimitPolicy(dev),
+      admin: consoleLimitPolicy(dev),
+    },
   });
 }

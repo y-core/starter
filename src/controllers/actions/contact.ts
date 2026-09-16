@@ -5,7 +5,7 @@ import { createMiddleware } from "@y-core/forge/router";
 import { requireFormContentType } from "@y-core/forge/security";
 import { formMultilineText, formText, strictObject, v } from "@y-core/forge/validation";
 
-import { turnstileHostnameCtx } from "../../app/context";
+import { devAllowanceCtx } from "../../app/context";
 import { csrfVerifyGuard, htmxOnlyGuard, originGuard, rateLimitGuard } from "../../app/middleware";
 import type { AppConfig, AppEnv } from "../../app/types";
 import { sendContactEmail } from "../../services/email";
@@ -45,8 +45,8 @@ export const ContactSchema = strictObject({
     v.email("A valid email address is required."),
   ),
   // `v.optional` is load-bearing: `formToObject` leaves an absent field absent rather than
-  // substituting `""`, and a valibot object refusal is a refusal of the *whole* object — so a
-  // non-optional `phone` would 422 every submission that leaves the optional input blank.
+  // substituting `""`, so a non-optional `phone` would 422 every submission leaving the input
+  // blank (`INPUT_VALIDATION.md` §1d).
   phone: v.optional(
     v.pipe(
       formText(),
@@ -71,12 +71,14 @@ export const contactAction = defineAction<typeof ContactSchema, AppEnv, AppConfi
   schema: ContactSchema,
   turnstile: {
     secretKey: (_c, config) => config.services.turnstile.secretKey,
-    // The site origin's hostname is the only comparison production ever makes: nothing sets
-    // `turnstileHostnameCtx` there, because only `worker.dev.ts` registers the middleware that does.
-    verify: (c, config) => ({
-      expectedHostname: turnstileHostnameCtx.getOptional(c) ?? config.site.url.hostname,
-      remoteIp: c.request.headers.get("CF-Connecting-IP") ?? undefined,
-    }),
+    // The hostname comparison is the same on both entries; the allowance is what lets a development
+    // one pass under Cloudflare's testing secrets, and it is unset in production because only
+    // `worker.dev.ts` can mint it (`INPUT_VALIDATION.md` §4a).
+    verify: (c, config) => {
+      const remoteIp = c.request.headers.get("CF-Connecting-IP");
+      const dev = devAllowanceCtx.getOptional(c);
+      return { expectedHostname: config.site.url.hostname, ...(remoteIp === null ? {} : { remoteIp }), ...(dev === undefined ? {} : { dev }) };
+    },
   },
   handle: async (data, c, config) => {
     const log = requestLog.get(c);

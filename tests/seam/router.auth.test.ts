@@ -7,9 +7,9 @@ import { createKVSessionStorage, createSignedCookie } from "@y-core/forge/sessio
 import { createD1Client } from "@y-core/forge/storage/db";
 import { fakeAuthD1, fakeKV, mintTestCsrfToken } from "@y-core/forge/testing";
 
-import type { StepUpFactor } from "../src/app/types";
-import { routes } from "../src/routes";
-import { app } from "../src/worker";
+import type { StepUpFactor } from "../../src/app/types";
+import { routes } from "../../src/routes";
+import { app } from "../../src/worker";
 
 const CSRF_SECRET = "de7bf4aef360e3a4c3254c9cec7e45d0f1fd98cc2219c62b5b07e826ba1bcc6e";
 const SESSION_SECRET = "6f2b4a7c0d3e5f7a9b1c3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e";
@@ -48,8 +48,27 @@ const REASON_WORDS = [
 
 const MOCK_ASSETS = { fetch: async () => new Response("Not Found", { status: 404 }) } as unknown as Fetcher;
 
+const SITE_ORIGIN = "https://example.com";
+
+/** The address every POST arrives from, unless a case is measuring the key or its absence. */
+const CALLER_IP = "203.0.113.1";
+
+// The auth group's rate limit keys on the caller alone and applies to its reads as well as its
+// mutations, so even a GET of the sign-in page answers 503 without this — behind Cloudflare the
+// header always rides along, which is what `trustCfHeaders` says.
+const CALLER: Record<string, string> = { "CF-Connecting-IP": CALLER_IP };
+
+// What a same-origin browser POST actually carries, and what `originProtection` judges it on:
+// `Sec-Fetch-Site` is the veto and `Origin` is the allowlist check, so a request missing either is
+// refused.
+const BROWSER_POST: Record<string, string> = { ...CALLER, Origin: SITE_ORIGIN, "Sec-Fetch-Site": "same-origin" };
+
 interface AuthState {
   admin?: boolean;
+  /** The address the account is held under, so a case can measure how the page escapes it. */
+  email?: string;
+  emailVerifiedAt?: number;
+  createdAt?: number;
   /** The second factors this account holds, confirmed. Absent is an account that enrolled none. */
   factors?: readonly StepUpFactor[];
   sessionsInvalidBefore?: number;
@@ -64,7 +83,9 @@ function authEnv(state: AuthState = {}) {
   const db = fakeAuthD1([
     {
       id: USER_ID,
-      email: USER_EMAIL,
+      email: state.email ?? USER_EMAIL,
+      ...(state.emailVerifiedAt === undefined ? {} : { emailVerifiedAt: state.emailVerifiedAt }),
+      ...(state.createdAt === undefined ? {} : { createdAt: state.createdAt }),
       isAdmin: state.admin === true,
       sessionsInvalidBefore: state.sessionsInvalidBefore ?? null,
       factors: (state.factors ?? []).map((kind) => ({ kind })),
@@ -72,7 +93,7 @@ function authEnv(state: AuthState = {}) {
   ]);
   const env = {
     ASSETS: MOCK_ASSETS,
-    SITE_ORIGIN: "https://example.com",
+    SITE_ORIGIN,
     CSRF_SECRET,
     EMAIL_API_KEY: "test-api-key",
     EMAIL_FROM: "from@example.com",
@@ -83,6 +104,10 @@ function authEnv(state: AuthState = {}) {
     SESSION_SECRET,
     AUTH_KV: kv,
     AUTH_DB: db,
+    // The auth groups carry a rate limit, and an absent binding is a 503 rather than a skipped
+    // guard — the same contract `tests/seam/routes.test.ts` documents for its minimum environment. The
+    // case that judges the limiter replaces it.
+    RATE_LIMITER: { limit: async () => ({ success: true }) },
   } as unknown as Env;
   return { env, kv, db };
 }
@@ -115,6 +140,21 @@ function headingOf(html: string): string {
   return /<h1[^>]*>[^<]*<\/h1>/.exec(html)?.[0] ?? "";
 }
 
+/** The whole `tag` element carrying `data-ref="<ref>"`, children included. */
+function refOf(html: string, tag: string, ref: string): string {
+  return new RegExp(`<${tag}[^>]*\\sdata-ref="${ref}"[^>]*>[\\s\\S]*?</${tag}>`).exec(html)?.[0] ?? "";
+}
+
+/** The inner markup of one element, with its own opening and closing tags removed. */
+function innerOf(element: string): string {
+  return element.replace(/^<[a-z]+[^>]*>/, "").replace(/<\/[a-z]+>$/, "");
+}
+
+/** The value `name` carries on one element's opening tag. */
+function attrOf(element: string, name: string): string {
+  return new RegExp(`\\s${name}="([^"]*)"`).exec(element)?.[1] ?? "";
+}
+
 function paragraphOf(html: string): string {
   return /<p class="text-muted-foreground">[^<]*<\/p>/.exec(html)?.[0] ?? "";
 }
@@ -137,7 +177,11 @@ function formBody(html: string, typed: Record<string, string> = {}): URLSearchPa
 async function post(path: string, env: Env, cookie: string, token: string, body: BodyInit, contentType?: string): Promise<Response> {
   return app.request(
     path,
-    { method: "POST", headers: { cookie, "X-CSRF-Token": token, ...(contentType === undefined ? {} : { "content-type": contentType }) }, body },
+    {
+      method: "POST",
+      headers: { ...BROWSER_POST, cookie, "X-CSRF-Token": token, ...(contentType === undefined ? {} : { "content-type": contentType }) },
+      body,
+    },
     env,
   );
 }
@@ -169,14 +213,14 @@ async function emailChangeToken(db: ReturnType<typeof fakeAuthD1>): Promise<stri
 describe("auth mount", () => {
   it("serves the sign-in page from the mounted auth route map", async () => {
     const { env } = authEnv();
-    const res = await app.request(SIGNIN_PATH, {}, env);
+    const res = await app.request(SIGNIN_PATH, { headers: CALLER }, env);
     expect(res.status).toBe(200);
     expect(headingOf(await res.text())).toBe('<h1 class="text-xl">Sign in</h1>');
   });
 
   it("serves the sign-up page from the mounted auth route map", async () => {
     const { env } = authEnv();
-    const res = await app.request(SIGNUP_PATH, {}, env);
+    const res = await app.request(SIGNUP_PATH, { headers: CALLER }, env);
     expect(res.status).toBe(200);
     expect(headingOf(await res.text())).toBe('<h1 class="text-xl">Create an account</h1>');
   });
@@ -321,7 +365,11 @@ describe("the JSON enrolment ceremony group", () => {
   it("refuses a finish carrying no CSRF token before the auth guard sees it", async () => {
     const { env, kv } = authEnv();
     const { cookie } = await anonymous(kv);
-    const res = await app.request(ENROL_FINISH_PATH, { method: "POST", headers: { cookie, "content-type": "application/json" }, body: "{}" }, env);
+    const res = await app.request(
+      ENROL_FINISH_PATH,
+      { method: "POST", headers: { ...BROWSER_POST, cookie, "content-type": "application/json" }, body: "{}" },
+      env,
+    );
     expect(res.status).toBe(403);
     expect(await res.text()).toBe("Forbidden");
   });
@@ -357,7 +405,11 @@ describe("authCsrfGuard on the auth prefixes", () => {
   it("refuses a sign-in submission carrying no token", async () => {
     const { env, kv } = authEnv();
     const { cookie } = await anonymous(kv);
-    const res = await app.request(SIGNIN_PATH, { method: "POST", headers: { cookie }, body: new URLSearchParams({ email: USER_EMAIL }) }, env);
+    const res = await app.request(
+      SIGNIN_PATH,
+      { method: "POST", headers: { ...BROWSER_POST, cookie }, body: new URLSearchParams({ email: USER_EMAIL }) },
+      env,
+    );
     expect(res.status).toBe(403);
     expect(await res.text()).toBe("Forbidden");
   });
@@ -391,6 +443,39 @@ describe("authCsrfGuard on the auth prefixes", () => {
   });
 });
 
+// The auth group declares no guards of its own — it exists only to carry these two — so both
+// policies reach the route through a sibling field of the group rather than through its middleware
+// list. Expanding the group by that list alone left the three unauthenticated POSTs with neither,
+// which is what these two cases refuse to let happen again.
+describe("the auth group's origin and rate-limit policies", () => {
+  it("refuses a sign-in posted from another origin", async () => {
+    const { env, kv } = authEnv();
+    const { cookie, id } = await anonymous(kv);
+    const token = await mintTestCsrfToken(CSRF_SECRET, SIGNIN_PATH, { subject: id });
+    const res = await app.request(
+      SIGNIN_PATH,
+      {
+        method: "POST",
+        headers: { ...BROWSER_POST, Origin: "https://attacker.example", "Sec-Fetch-Site": "cross-site", cookie, "X-CSRF-Token": token },
+        body: new URLSearchParams({ email: USER_EMAIL }),
+      },
+      env,
+    );
+    expect(res.status).toBe(403);
+    expect(await res.text()).toBe("Forbidden");
+  });
+
+  it("refuses a sign-in the limiter has run out of budget for", async () => {
+    const { env, kv } = authEnv();
+    const limited = { ...env, RATE_LIMITER: { limit: async () => ({ success: false }) } } as unknown as Env;
+    const { cookie, id } = await anonymous(kv);
+    const token = await mintTestCsrfToken(CSRF_SECRET, SIGNIN_PATH, { subject: id });
+    const res = await post(SIGNIN_PATH, limited, cookie, token, new URLSearchParams({ email: USER_EMAIL }));
+    expect(res.status).toBe(429);
+    expect(await res.text()).toBe("Too many requests. Please try again later.");
+  });
+});
+
 // Every other mutation case here pre-persists a session with `anonymous(kv)`, which is what a real
 // first-time visitor does not have. The token is bound to a session id, so the id has to survive the
 // GET that minted it: forge marks the session dirty when the CSRF subject resolver reads `.id`, and
@@ -398,7 +483,7 @@ describe("authCsrfGuard on the auth prefixes", () => {
 describe("a first-time visitor with no session at all", () => {
   it("accepts the sign-up its own signed-out page rendered", async () => {
     const { env } = authEnv();
-    const page = await app.request(SIGNUP_PATH, {}, env);
+    const page = await app.request(SIGNUP_PATH, { headers: CALLER }, env);
     const html = await page.text();
     const cookie = (page.headers.get("set-cookie") ?? "").split(";")[0] as string;
 
@@ -517,5 +602,82 @@ describe("the email-change confirmation shares the app's own layout", () => {
 
     expect(paragraphOf(html)).toBe(`<p class="text-muted-foreground">${CONFIRMED}</p>`);
     expect(html).toInclude('id="primary-nav"');
+  });
+});
+
+// `/account` is this app's own page rather than forge's, and every case above asserts a redirect
+// away from it. These are the ones that render it.
+describe("the account page this app owns", () => {
+  async function accountPage(state: AuthState = {}) {
+    const { env, kv, db } = authEnv({ factors: SETTLED, ...state });
+    const { cookie } = await signedIn(kv, true);
+    const res = await app.request(routes.account.href(), { headers: { cookie } }, env);
+    return { res, html: await res.text(), env, cookie, db };
+  }
+
+  it("renders to a settled visitor rather than sending them anywhere", async () => {
+    const { res, html } = await accountPage();
+
+    expect(res.status).toBe(200);
+    expect(headingOf(html)).toBe('<h1 class="text-xl">Your account</h1>');
+  });
+
+  it("names the address the guard established, escaped, so a hostile address cannot reach the markup", async () => {
+    const { html } = await accountPage({ email: `a&b'<c>@example.com` });
+
+    expect(refOf(html, "span", "account-email")).toBe('<span data-ref="account-email">a&amp;b&#39;&lt;c&gt;@example.com</span>');
+  });
+
+  it("reports the confirmation state the store holds for the address", async () => {
+    const { html } = await accountPage({ emailVerifiedAt: 1_700_000_000_000 });
+
+    expect(innerOf(refOf(html, "span", "account-verified"))).toBe("Address verified");
+    expect(attrOf(refOf(html, "span", "account-verified"), "data-tone")).toBe("success");
+  });
+
+  it("dates the account from what the store holds rather than from when the page was rendered", async () => {
+    const { html } = await accountPage({ createdAt: Date.UTC(2021, 4, 17) });
+
+    const time = /<time[^>]*>([^<]*)<\/time>/.exec(html);
+    expect(attrOf(time?.[0] ?? "", "datetime")).toBe("2021-05-17T00:00:00.000Z");
+    expect(time?.[1]).toBe("2021-05-17");
+  });
+
+  it("keeps the page out of every cache and out of every search index, which a signed-in page owes", async () => {
+    const { res, html } = await accountPage();
+
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(html).toInclude('<meta name="robots" content="noindex">');
+  });
+
+  it("mints a sign-out token the sign-out path accepts, rather than borrowing the page's own", async () => {
+    const { html, env, cookie } = await accountPage();
+    const token = attrOf(/<input[^>]*name="_csrf"[^>]*>/.exec(html)?.[0] ?? "", "value");
+
+    const res = await post("/auth/signout", env, cookie, token, new URLSearchParams({ _csrf: token }));
+    expect(res.status).not.toBe(403);
+  });
+
+  it("refuses that same token at another path, which is what makes minting it per path load-bearing", async () => {
+    const { html, env, cookie } = await accountPage();
+    const token = attrOf(/<input[^>]*name="_csrf"[^>]*>/.exec(html)?.[0] ?? "", "value");
+
+    const res = await post(ENROL_FINISH_PATH, env, cookie, token, "{}", "application/json");
+    expect(res.status).toBe(403);
+  });
+
+  it("offers the sign-in methods as a fetch rather than rendering them, so the landing page pays for no factor it was not asked for", async () => {
+    const { html, env, cookie } = await accountPage();
+
+    expect(attrOf(refOf(html, "a", "factors-trigger"), "hx-get")).toBe("/account/factors");
+    const panel = await app.request("/account/factors", { headers: { cookie } }, env);
+    expect(panel.status).toBe(200);
+    expect(await panel.text()).not.toBe(html);
+  });
+
+  it("links the email-change page rather than putting a second form on the landing page", async () => {
+    const { html } = await accountPage();
+
+    expect(attrOf(refOf(html, "a", "account-email-change"), "href")).toBe("/account/email-change");
   });
 });

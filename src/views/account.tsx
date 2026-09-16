@@ -1,3 +1,4 @@
+/** @jsxRuntime automatic */
 /** @jsxImportSource @y-core/forge/jsx */
 
 import { AuthFactorsTrigger, AuthSignout } from "@y-core/forge/auth/web";

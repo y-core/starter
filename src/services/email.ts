@@ -35,7 +35,10 @@ export async function sendContactEmail(submission: ContactSubmission, email: Ema
 
   if (!res.ok) {
     const text = await res.text().catch(() => "(unreadable)");
-    logger.error(`Email API error ${res.status}: ${text}`);
+    // Structurally, never interpolated: a provider rejection routinely echoes `reply_to` back, and
+    // `redactPersisted` in `src/app/middleware.ts` inspects `record.data` and never `record.message`
+    // (`BOUNDARIES.md` §4b).
+    logger.error("Email API error", { status: res.status, body: text });
     return { ok: false, reason: `http-${res.status}` };
   }
 

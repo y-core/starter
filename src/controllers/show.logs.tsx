@@ -1,9 +1,11 @@
+/** @jsxRuntime automatic */
+/** @jsxImportSource @y-core/forge/jsx */
 import { CoreIcon } from "@assets";
 import { definePage } from "@y-core/forge/app";
 import { kvLogChannel } from "@y-core/forge/logging";
 import { loadLogViewer } from "@y-core/forge/logging/show";
 
-import { configStore } from "../app/config";
+import { devAllowanceCtx } from "../app/context";
 import type { AppConfig, AppEnv } from "../app/types";
 import { routes } from "../routes";
 
@@ -21,9 +23,12 @@ export const showLogsController = definePage<AppEnv, AppConfig, Response>({
   loader: (c, _config) =>
     loadLogViewer(c, {
       channel: (cc) => kvLogChannel(cc.env.LOGS_KV),
-      // Logs carry request paths, request ids and error messages. `access` runs before the channel
-      // is touched, so a denial never reads KV. Production (`LOG_LEVEL` unset) gets a 403.
-      access: (cc) => configStore.get(cc.env).site.debug,
+      // Logs carry request paths, request ids and error messages, and this route has no auth guard
+      // — so the gate has to be one a deployment cannot flip. It is the dev allowance, not
+      // `LOG_LEVEL`: an env var is a value a production deployment can set, whereas the token is
+      // minted only by `worker.dev.ts`, which `validate-dev-boundary` keeps out of the production
+      // bundle. `access` runs before the channel is touched, so a denial never reads KV.
+      access: (cc) => devAllowanceCtx.getOptional(cc) !== undefined,
       icon: CoreIcon,
       basePath: routes.showcase.logs.href(),
     }),

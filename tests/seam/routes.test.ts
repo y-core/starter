@@ -3,16 +3,19 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { CSRF_FIELD_DEFAULT, TURNSTILE_FIELD_DEFAULT } from "@y-core/forge/form";
 import { createTestContext, fakeD1, fakeKV, mintTestCsrfToken } from "@y-core/forge/testing";
 
-import type { AppConfig, AppEnv } from "../src/app/types";
-import { ContactSchema, contactAction } from "../src/controllers/actions/contact";
-import { app } from "../src/worker";
-import { devApp } from "../src/worker.dev";
+import type { AppConfig, AppEnv } from "../../src/app/types";
+import { ContactSchema, contactAction } from "../../src/controllers/actions/contact";
+import { app } from "../../src/worker";
+import { devApp } from "../../src/worker.dev";
 
 const SITE_ORIGIN = "https://example.com";
 
 /** A hostname the site origin does not name, so a siteverify answer bearing it can only pass
  *  through the dev entry point's allowance. */
 const DEV_HOSTNAME = "elsewhere.example";
+
+/** One of Cloudflare's three published testing secrets — the other half of the allowance's lock. */
+const TESTING_SECRET = "1x0000000000000000000000000000000AA";
 
 const BASE_TEST_CONFIG: AppConfig = {
   site: {
@@ -85,10 +88,14 @@ const MINIMUM_ENV = {
   SESSION_SECRET: "6f2b4a7c0d3e5f7a9b1c3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e",
   AUTH_KV: fakeKV(),
   AUTH_DB: fakeD1(),
-  // Set in every case, so the production worker is held against it throughout and not only in the
-  // one test below that names it. It must never widen what production accepts.
-  TURNSTILE_DEV_HOSTNAME: DEV_HOSTNAME,
+  // Declared here because `wrangler.jsonc` declares it: since forge 0.1.15 an absent `RATE_LIMITER`
+  // is a 503 on the production entry rather than a skipped guard, so the minimum environment
+  // production accepts is the one that carries it. The cases that judge the limiter replace it.
+  RATE_LIMITER: { limit: async () => ({ success: true }) },
 } as unknown as Env;
+
+/** The address every POST arrives from, unless a case is measuring the key or its absence. */
+const CALLER_IP = "203.0.113.1";
 
 let _savedFetch: typeof globalThis.fetch;
 let _csrfToken = "";
@@ -111,8 +118,10 @@ afterAll(() => {
   globalThis.fetch = _savedFetch;
 });
 
+// `CF-Connecting-IP` rides on every POST because behind Cloudflare it always does, and the default
+// keying fails closed without it — the one case that asserts the 503 builds its headers by hand.
 function postHeaders(): Record<string, string> {
-  return { ...HTMX_HEADERS, "X-CSRF-Token": _csrfToken, Origin: SITE_ORIGIN };
+  return { ...HTMX_HEADERS, "X-CSRF-Token": _csrfToken, Origin: SITE_ORIGIN, "CF-Connecting-IP": CALLER_IP };
 }
 
 describe("GET /api/health", () => {
@@ -218,7 +227,7 @@ describe("POST /api/contact — CSRF protection", () => {
   });
 
   it("returns 403 when X-CSRF-Token header is absent", async () => {
-    const headers = { ...HTMX_HEADERS, Origin: SITE_ORIGIN }; // no X-CSRF-Token
+    const headers = { ...HTMX_HEADERS, Origin: SITE_ORIGIN, "CF-Connecting-IP": CALLER_IP }; // no X-CSRF-Token
     const response = await app.request("/api/contact", { method: "POST", headers, body: VALID_FORM.toString() }, MINIMUM_ENV);
 
     expect(response.status).toBe(403);
@@ -227,7 +236,11 @@ describe("POST /api/contact — CSRF protection", () => {
   it("returns 403 when X-CSRF-Token is forged (invalid value)", async () => {
     const response = await app.request(
       "/api/contact",
-      { method: "POST", headers: { ...HTMX_HEADERS, "X-CSRF-Token": "invalid-forged-token", Origin: SITE_ORIGIN }, body: VALID_FORM.toString() },
+      {
+        method: "POST",
+        headers: { ...HTMX_HEADERS, "X-CSRF-Token": "invalid-forged-token", Origin: SITE_ORIGIN, "CF-Connecting-IP": CALLER_IP },
+        body: VALID_FORM.toString(),
+      },
       MINIMUM_ENV,
     );
 
@@ -455,7 +468,7 @@ describe("POST /api/contact — boundary values", () => {
 
 describe("POST /api/contact — XSS payloads", () => {
   it("accepts a submission with XSS chars in the name and returns the success fragment", async () => {
-    // XSS coverage lives in tests/email.test.ts which captures and asserts the outgoing
+    // XSS coverage lives in tests/unit/email.test.ts which captures and asserts the outgoing
     // email body is HTML-escaped. Here we verify the HTTP response for such submissions
     // is the static success fragment (which definitionally cannot reflect input back).
     const body = new URLSearchParams({
@@ -551,49 +564,47 @@ describe("POST /api/contact — Turnstile verification", () => {
   });
 });
 
-// The whole point of routing the override through `worker.dev.ts` rather than through the schema:
-// production reads the same environment and is unmoved by it. These two cases share every input but
-// the entry point, so a regression that made the allowance environment-driven fails the first.
-describe("POST /api/contact — TURNSTILE_DEV_HOSTNAME", () => {
+// Two locks, and neither opens alone: the allowance only the dev entry can mint, and one of
+// Cloudflare's published testing secrets. Every case below shares the siteverify answer, so what
+// separates them is exactly the pair — a regression relaxing either half on its own fails here.
+describe("POST /api/contact — the Turnstile testing-secret allowance", () => {
+  const TESTING_ENV = { ...MINIMUM_ENV, TURNSTILE_SECRET_KEY: TESTING_SECRET } as unknown as Env;
+
   const siteverifyElsewhere = async (url: URL | RequestInfo) => {
     if (url.toString() === TURNSTILE_URL) return new Response(JSON.stringify({ success: true, hostname: DEV_HOSTNAME }));
     return new Response(null, { status: 202 });
   };
 
-  it("refuses a token verified against another hostname on the production entry", async () => {
+  async function submit(entry: typeof app, env: Env): Promise<Response> {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = siteverifyElsewhere as typeof globalThis.fetch;
 
     try {
-      const response = await app.request(
-        "/api/contact",
-        { method: "POST", headers: postHeaders(), body: VALID_FORM_WITH_TOKEN.toString() },
-        MINIMUM_ENV,
-      );
-
-      expect(response.status).toBe(422);
-      expect(await response.text()).toBe(refusal("name"));
+      return await entry.request("/api/contact", { method: "POST", headers: postHeaders(), body: VALID_FORM_WITH_TOKEN.toString() }, env);
     } finally {
       globalThis.fetch = originalFetch;
     }
+  }
+
+  it("refuses a token verified against another hostname on the production entry", async () => {
+    const response = await submit(app, TESTING_ENV);
+
+    expect(response.status).toBe(422);
+    expect(await response.text()).toBe(refusal("name"));
   });
 
-  it("accepts the same token on the dev entry, which licenses the override", async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = siteverifyElsewhere as typeof globalThis.fetch;
+  it("accepts the same token on the dev entry, which mints the allowance", async () => {
+    const response = await submit(devApp, TESTING_ENV);
 
-    try {
-      const response = await devApp.request(
-        "/api/contact",
-        { method: "POST", headers: postHeaders(), body: VALID_FORM_WITH_TOKEN.toString() },
-        MINIMUM_ENV,
-      );
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(EXPECTED_SUCCESS_HTML);
+  });
 
-      expect(response.status).toBe(200);
-      expect(await response.text()).toBe(EXPECTED_SUCCESS_HTML);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+  it("refuses it on the dev entry too when the secret is not a published testing one", async () => {
+    const response = await submit(devApp, MINIMUM_ENV);
+
+    expect(response.status).toBe(422);
+    expect(await response.text()).toBe(refusal("name"));
   });
 });
 
@@ -640,20 +651,35 @@ describe("POST /api/contact — rate limiting", () => {
   });
 
   it("returns 503 when CF-Connecting-IP header is absent (fail-closed)", async () => {
+    const { "CF-Connecting-IP": _ip, ...headers } = postHeaders();
+
+    const response = await app.request("/api/contact", { method: "POST", headers, body: VALID_FORM_WITH_TOKEN.toString() }, MINIMUM_ENV);
+
+    expect(response.status).toBe(503);
+  });
+
+  // The binding is not optional on the production entry — an absent one is a limiter that silently
+  // stopped limiting, which fails closed. The dev entry's allowance is the only thing that degrades
+  // it, so the two cases below share every input but the entry point.
+  it("returns 503 when the RATE_LIMITER binding is absent on the production entry", async () => {
+    const { RATE_LIMITER: _limiter, ...env } = MINIMUM_ENV as unknown as Record<string, unknown>;
+
     const response = await app.request(
       "/api/contact",
       { method: "POST", headers: postHeaders(), body: VALID_FORM_WITH_TOKEN.toString() },
-      { ...MINIMUM_ENV, RATE_LIMITER: { limit: async () => ({ success: true }) } },
+      env as unknown as Env,
     );
 
     expect(response.status).toBe(503);
   });
 
-  it("skips rate limiting when RATE_LIMITER binding is absent", async () => {
-    const response = await app.request(
+  it("skips rate limiting on the dev entry, which licenses the absent binding", async () => {
+    const { RATE_LIMITER: _limiter, ...env } = MINIMUM_ENV as unknown as Record<string, unknown>;
+
+    const response = await devApp.request(
       "/api/contact",
-      { method: "POST", headers: { ...postHeaders(), "CF-Connecting-IP": "1.2.3.4" }, body: VALID_FORM_WITH_TOKEN.toString() },
-      MINIMUM_ENV,
+      { method: "POST", headers: postHeaders(), body: VALID_FORM_WITH_TOKEN.toString() },
+      env as unknown as Env,
     );
 
     expect(response.status).toBe(200);
@@ -755,17 +781,18 @@ describe("POST /api/contact — edge cases", () => {
   });
 });
 
-// `LOG_LEVEL` unset → `site.debug` is false → the viewer's `access` predicate denies.
+// The viewer's `access` predicate reads the dev allowance, which only `worker.dev.ts` mints — so the
+// entry is the gate here, and the environment is the same either way. That is the point: no env var
+// a production deployment could set opens the page, so `app` is refused and `devApp` is admitted.
 // A fresh `fakeKV` per request: it is a working namespace, so the request logger's own entry would
 // otherwise accumulate across cases and the empty-state assertions would depend on test order.
 const logsEnv = () => ({ ...MINIMUM_ENV, LOGS_KV: fakeKV() }) as unknown as Env;
-const logsDebugEnv = () => ({ ...MINIMUM_ENV, LOGS_KV: fakeKV(), LOG_LEVEL: "DEBUG" }) as unknown as Env;
 
 const EXPECTED_EMPTY_TBODY =
   '<tbody id="log-tbody"><tr><td colspan="5" class="px-4 py-4 text-center"><div class="flex flex-col items-center gap-2"><span class="text-sm text-muted-foreground">No log entries have been recorded yet.</span></div></td></tr></tbody>';
 
 describe("GET /showcase/logs — access control", () => {
-  it("returns 403 when site.debug is false (LOG_LEVEL unset)", async () => {
+  it("returns 403 on the production entry, which mints no allowance", async () => {
     const res = await app.request("/showcase/logs", {}, logsEnv());
     expect(res.status).toBe(403);
     expect(await res.text()).toBe("Forbidden");
@@ -778,8 +805,8 @@ describe("GET /showcase/logs — access control", () => {
 });
 
 describe("GET /showcase/logs — full page", () => {
-  it("returns 200 status when LOG_LEVEL is DEBUG", async () => {
-    const res = await app.request("/showcase/logs", {}, logsDebugEnv());
+  it("returns 200 status on the dev entry, which mints the allowance", async () => {
+    const res = await devApp.request("/showcase/logs", {}, logsEnv());
     expect(res.status).toBe(200);
   });
 
@@ -787,7 +814,7 @@ describe("GET /showcase/logs — full page", () => {
   // the page arrives inside the chrome that carries the dark class and the pre-paint theme script.
   // The `<title>` composes the mount's own page title with the site's.
   it("renders the viewer inside the app's Layout, not a shell of forge's own", async () => {
-    const res = await app.request("/showcase/logs", {}, logsDebugEnv());
+    const res = await devApp.request("/showcase/logs", {}, logsEnv());
     const text = await res.text();
     expect(text).toContain("<!DOCTYPE html>");
     expect(text).toContain("<title>Logs — Forge Studio</title>");
@@ -801,7 +828,7 @@ describe("GET /showcase/logs — full page", () => {
   });
 
   it("includes required security headers", async () => {
-    const res = await app.request("/showcase/logs", {}, logsDebugEnv());
+    const res = await devApp.request("/showcase/logs", {}, logsEnv());
     expect(res.headers.get("content-security-policy")).not.toBeNull();
     expect(res.headers.get("strict-transport-security")).toBe("max-age=63072000; includeSubDomains; preload");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
@@ -811,7 +838,7 @@ describe("GET /showcase/logs — full page", () => {
 
 describe("GET /showcase/logs — HTMX partial", () => {
   it("returns only the tbody fragment when HX-Request is true", async () => {
-    const res = await app.request("/showcase/logs", { headers: { "HX-Request": "true" } }, logsDebugEnv());
+    const res = await devApp.request("/showcase/logs", { headers: { "HX-Request": "true" } }, logsEnv());
     expect(res.status).toBe(200);
     const text = await res.text();
     // exact match proves TBODY_ID in the partial equals the id the full page registers as swap target
@@ -819,7 +846,7 @@ describe("GET /showcase/logs — HTMX partial", () => {
   });
 
   it("does not include the full page shell in the partial response", async () => {
-    const res = await app.request("/showcase/logs", { headers: { "HX-Request": "true" } }, logsDebugEnv());
+    const res = await devApp.request("/showcase/logs", { headers: { "HX-Request": "true" } }, logsEnv());
     const text = await res.text();
     expect(text).not.toContain("<!DOCTYPE html>");
     expect(text).not.toContain("<title>Request Log</title>");

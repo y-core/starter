@@ -1,3 +1,4 @@
+/** @jsxRuntime automatic */
 /** @jsxImportSource @y-core/forge/jsx */
 
 import { assets, CoreIcon, ICON_LINKS } from "@assets";
@@ -34,17 +35,17 @@ function hidden(robots: PageMeta["robots"]): boolean {
 
 export function Layout({ ctx, meta, children }: LayoutProps) {
   const { nonce, baseUrl } = ctx;
-  const merged = mergeMeta(siteMeta(baseUrl), meta);
+  const { canonical, ...merged } = mergeMeta(siteMeta(baseUrl), meta);
   // The base names the site root, which on a `noindex` page would point a crawler at a URL other
-  // than the one it was just told to drop. Cleared here, so no page has to restate it.
-  const canonical = hidden(merged.robots) ? undefined : merged.canonical;
+  // than the one it was just told to drop. Dropped here, so no page has to restate it.
+  const canonicalLink = hidden(merged.robots) || canonical === undefined ? {} : { canonical };
   return (
     <html lang='en'>
       <head>
         <meta charset='utf-8' />
         <meta name='viewport' content='width=device-width, initial-scale=1' />
 
-        {metaTags({ ...merged, title: documentTitle(merged.title), canonical }, { nonce })}
+        {metaTags({ ...merged, title: documentTitle(merged.title), ...canonicalLink }, { nonce })}
 
         {ICON_LINKS.map((link) => (
           <link rel={link.rel} href={link.href} type={link.type} sizes={link.sizes} />

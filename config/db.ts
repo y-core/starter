@@ -11,6 +11,24 @@
  *  `Buffer` in global scope — exactly what `"types": []` withholds from the Worker.
  */
 
+import { dirname, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import type { DbHostConfig } from "@y-core/forge/tooling/db";
 
-export default { schemas: ["node_modules/@y-core/forge/src/auth/schema.sql", "config/schema.sql"], seeds: ["config/seeds"] } satisfies DbHostConfig;
+// Resolved through the exports map rather than written as a literal `node_modules/@y-core/forge/…`
+// path: the subpath is the facade, and a literal survives no rename inside forge. Made relative
+// again because the composed snapshot keys its digests on the text written here — an absolute path
+// would be this machine's, and the committed artifact would differ per checkout.
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const FORGE_AUTH_SCHEMA = relative(ROOT, fileURLToPath(import.meta.resolve("@y-core/forge/auth/schema.sql")));
+
+// `migrations` and `snapshot` are stated rather than defaulted: the defaults sit at the repository
+// root, these files do not, and a position nobody wrote down is one a later reader has to find by
+// running the command and watching where it looks.
+export default {
+  schemas: [FORGE_AUTH_SCHEMA, "config/schema.sql"],
+  seeds: ["config/seeds"],
+  migrations: "config/migrations",
+  snapshot: "config/schema.snapshot.json",
+} satisfies DbHostConfig;

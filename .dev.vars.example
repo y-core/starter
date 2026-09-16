@@ -4,8 +4,8 @@
 ################################################################################
 # `SITE_ORIGIN` is set in exactly three places, one per case, and wrangler.jsonc is none of them:
 # the literal in src/app/config.ts (production, and the fallback when the environment carries none),
-# this file (`bun run dev`), and the `--var` on `dev:browser` in package.json (the browser suite,
-# https://localhost:8787). Production declares nothing and falls through to the literal.
+# this file (`bun run dev`), and the `--var` in playwright.config.ts's webServer.command (the browser
+# suite, https://127.0.0.1:8788). Production declares nothing and falls through to the literal.
 SITE_ORIGIN=https://starter.devbox.test:8443
 # Proxy-less fallback (`wrangler dev` on a bare machine, browser at https://localhost:8787):
 # set SITE_ORIGIN=https://localhost:8787 instead. The cases are mutually exclusive and each has one
@@ -13,7 +13,8 @@ SITE_ORIGIN=https://starter.devbox.test:8443
 # is what WORKERS_PLATFORM.md §4e asks for. Forge's `extraOrigins` escape hatch is for allowing a
 # second origin at once, and no case here needs one.
 
-# Set to DEBUG to show error details in 500 responses. Omit in prod — defaults to off.
+# Set to DEBUG to unlock the /logs viewer. Error details in 500 responses are no longer this
+# variable's: src/worker.dev.ts grants them, so no production environment can switch them on.
 LOG_LEVEL=DEBUG
 
 # EMAIL_FROM and EMAIL_TO can be defined here to override defaults from src/app/config.ts
@@ -31,11 +32,9 @@ EMAIL_API_KEY=dev-placeholder-api-key
 # "Always passes" testing keys — no Cloudflare account needed, only network to siteverify:
 TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
 TURNSTILE_SITE_KEY=1x00000000000000000000AA
-# The testing keys make siteverify answer hostname=example.com whatever origin the widget ran on,
-# so the dev entry point compares against this instead of SITE_ORIGIN's hostname. With real keys
-# from dash.cloudflare.com/turnstile, omit it — siteverify then returns the browser's own hostname.
-# Only src/worker.dev.ts consults it; in production it is inert.
-TURNSTILE_DEV_HOSTNAME=example.com
+# The testing keys make siteverify answer a fixed hostname whatever origin the widget ran on, which
+# an app pinning its own hostname refuses. src/worker.dev.ts grants the allowance that skips that
+# comparison, and only under one of these three published secrets — so there is nothing to set here.
 
 # Auth key ring — comma-separated hex root secrets, newest first, each >= 64 hex chars.
 # Rotation is prepending a secret. Generate with: openssl rand -hex 32

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { configStore, SITE_ORIGIN } from "../src/app/config";
+import { configStore, SITE_ORIGIN } from "../../src/app/config";
 
 const COMPLETE_ENV = {
   SITE_ORIGIN: "https://example.com",

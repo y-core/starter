@@ -1,4 +1,8 @@
-// The suite whose absence hid `bug-260908-17`. `tests/routes.test.ts` stubs `fetch` for the
+/// <reference types="@y-core/forge/testing/node" />
+// The directive is file-scoped, so the node surface `startDevServer` needs reaches this suite alone
+// and the Worker half of the program keeps `"types": []`.
+
+// The suite whose absence hid `bug-260908-17`. `tests/seam/routes.test.ts` stubs `fetch` for the
 // siteverify URL, so no case there has ever exercised real Turnstile verification — and a guard that
 // could not pass in dev was invisible, because its refusal is a validation refusal by design. These
 // cases run the deployed chain inside workerd and call the real siteverify, which the "always passes"
@@ -9,14 +13,12 @@ import { type DevServer, startDevServer } from "@y-core/forge/testing/workerd";
 
 const ENTRY = "src/worker.dev.ts";
 
-// The testing keys, and the hostname siteverify answers for them whatever origin the widget ran on.
-// `TURNSTILE_DEV_HOSTNAME` is what makes that answer acceptable, and only `worker.dev.ts` reads it.
+// The testing keys, whose fixed siteverify hostname only the dev entry's allowance makes acceptable.
 const VARS = {
   CSRF_SECRET: "de7bf4aef360e3a4c3254c9cec7e45d0f1fd98cc2219c62b5b07e826ba1bcc6e",
   EMAIL_API_KEY: "test-api-key",
   TURNSTILE_SECRET_KEY: "1x0000000000000000000000000000000AA",
   TURNSTILE_SITE_KEY: "1x00000000000000000000AA",
-  TURNSTILE_DEV_HOSTNAME: "example.com",
   AUTH_KEY_RING: "9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c3d5e",
   SESSION_SECRET: "6f2b4a7c0d3e5f7a9b1c3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e",
 };

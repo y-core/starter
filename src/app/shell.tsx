@@ -1,3 +1,4 @@
+/** @jsxRuntime automatic */
 /** @jsxImportSource @y-core/forge/jsx */
 
 import type { PageShell } from "@y-core/forge/app";

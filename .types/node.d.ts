@@ -12,3 +12,7 @@ declare module "node:path" {
   export function relative(from: string, to: string): string;
   export function isAbsolute(path: string): boolean;
 }
+
+declare module "node:fs" {
+  export function readFileSync(path: string | URL, encoding: "utf-8"): string;
+}

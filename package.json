@@ -17,27 +17,29 @@
     "db:schema:check": "forge db schema check",
     "db:status": "forge db migrate status",
     "dev": "bun run build:assets && wrangler dev src/worker.dev.ts --live-reload",
-    "dev:browser": "bun run build:assets && wrangler dev src/worker.dev.ts --var SITE_ORIGIN:https://localhost:8787 --live-reload",
+    "dev:browser": "bun run build:assets && wrangler dev src/worker.dev.ts --port 8788 --ip 127.0.0.1 --var SITE_ORIGIN:https://127.0.0.1:8788 --live-reload",
     "dev:forge": "bun run ../forge/src/tooling/dev/sync.ts",
     "fix": "forge verify --fix",
     "lint": "forge verify --only lint",
-    "test": "bun test tests/",
+    "test": "bun test tests/unit/ tests/seam/",
     "test:browser": "playwright test",
     "types:assets": "forge verify --only types:assets",
     "verify": "forge verify",
-    "verify:fast": "forge verify --mode fast"
+    "verify:fast": "forge verify --mode fast",
+    "verify:full": "forge verify --full"
   },
   "dependencies": {
-    "@y-core/forge": "https://github.com/y-core/forge/releases/download/v0.1.14/y-core-forge-0.1.14.tgz"
+    "@y-core/forge": "https://github.com/y-core/forge/releases/download/v0.1.16/y-core-forge-0.1.16.tgz"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.0",
-    "@tailwindcss/cli": "^4.3.1",
+    "@tailwindcss/cli": "^4.3.3",
     "esbuild": "^0.28.1",
-    "oxfmt": "0.66.0",
-    "oxlint": "1.80.0",
+    "oxfmt": "0.67.0",
+    "oxlint": "1.82.0",
+    "oxlint-tsgolint": "7.0.2001",
     "sharp": "^0.35.2",
-    "tailwindcss": "^4.3.1",
+    "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "urlpattern-polyfill": "^10.1.0",
     "wrangler": "^4.129.1"

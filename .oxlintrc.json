@@ -32,22 +32,61 @@
     "forge/sql-explicit-transaction": "error",
     "typescript/no-explicit-any": "error",
     "typescript/no-non-null-assertion": "error",
+    "typescript/no-invalid-void-type": "error",
+    "typescript/no-empty-object-type": ["error", { "allowInterfaces": "with-single-extends" }],
+    "typescript/no-unsafe-function-type": "error",
+    "typescript/no-wrapper-object-types": "error",
     "eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_", "ignoreRestSiblings": true }],
+    "eslint/no-irregular-whitespace": ["error", { "skipComments": true }],
+    "eslint/prefer-arrow-callback": "error",
+    "eslint/preserve-caught-error": "error",
+    "eslint/no-shadow": "error",
+    // A spread is how a conditional property is added under `exactOptionalPropertyTypes`, which the
+    // rule reads as useless.
+    "unicorn/no-useless-spread": "off",
+    // The role is what an assistive technology reads; swapping in the tag changes the markup a spec
+    // asserts on for no gain here.
+    "jsx-a11y/prefer-tag-over-role": "off",
+    // The facade, and the Worker/build-time boundary. The tooling group names the bare subpath as
+    // well as its children: `@y-core/forge/tooling` resolves on its own, and a group matching only
+    // `/*` leaves that one spelling open.
     "eslint/no-restricted-imports": [
       "error",
       {
         "patterns": [
-          { "group": ["valibot"], "message": "Import `v` from the validation facade (@y-core/forge/validation) — never valibot directly." },
-          { "group": ["@y-core/forge/tooling/*"], "message": "A build-time subpath belongs in config/, never in src/ or tests/." }
+          {
+            "group": ["valibot"],
+            "message": "Import `v` from the validation facade (@y-core/forge/validation) — never valibot directly."
+          },
+          {
+            "group": ["@y-core/forge/tooling", "@y-core/forge/tooling/*", "@y-core/forge/tooling/**"],
+            "message": "A build-time subpath belongs in config/, scripts/ or playwright.config.ts — never in src/ or tests/."
+          }
         ]
       }
-    ]
+    ],
+    // Type-aware, and the only rules here that read the type program rather than the syntax tree.
+    // They need the `oxlint-tsgolint` driver, which is why it is a pinned devDependency; without it
+    // oxlint skips them silently. The three that are on find defects a Worker actually suffers — a
+    // floating promise is a write that may never land before the isolate is torn down.
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/await-thenable": "error",
+    // Calibrated off: each is noisy on correct code in this style, and an error a reader learns to
+    // ignore is worse than no rule.
+    "typescript/no-base-to-string": "off",
+    "typescript/unbound-method": "off",
+    "typescript/restrict-template-expressions": "off",
+    "typescript/no-misused-spread": "off",
+    "typescript/require-array-sort-compare": "off",
+    "typescript/no-duplicate-type-constituents": "off",
+    "typescript/no-redundant-type-constituents": "off"
   },
   "overrides": [
     {
       // A spec's job is adversarial markup, so the a11y and design rules are off in the suite —
       // forge draws the same line in its own config. `exact-markup-assertion` replaces them: it is
-      // the rule that matters for a test, and CLAUDE.md bans substring matching on markup anyway.
+      // the rule that matters for a test, and the canon bans substring matching on markup anyway.
       "files": ["**/*.test.ts", "**/*.test.tsx", "**/*.browser.ts"],
       "rules": {
         "typescript/no-non-null-assertion": "off",
@@ -71,18 +110,25 @@
         "forge/platform-text-balance": "off",
         "forge/platform-text-pretty": "off",
         "forge/reduced-motion": "off",
-        "forge/spacing-scale-only": "off"
+        "forge/spacing-scale-only": "off",
+        "jsx-a11y/aria-proptypes": "off",
+        "jsx-a11y/control-has-associated-label": "off",
+        "jsx-a11y/tabindex-no-positive": "off"
       }
     },
     {
-      // The two files that are *supposed* to import a build-time subpath.
-      "files": ["config/**", "playwright.config.ts"],
+      // The trees that are *supposed* to import a build-time subpath: each sits outside
+      // `tsconfig.json`'s `include` precisely so it may. The valibot ban still applies here.
+      "files": ["config/**", "scripts/**", "playwright.config.ts"],
       "rules": {
         "eslint/no-restricted-imports": [
           "error",
           {
             "patterns": [
-              { "group": ["valibot"], "message": "Import `v` from the validation facade (@y-core/forge/validation) — never valibot directly." }
+              {
+                "group": ["valibot"],
+                "message": "Import `v` from the validation facade (@y-core/forge/validation) — never valibot directly."
+              }
             ]
           }
         ]

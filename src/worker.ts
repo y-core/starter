@@ -1,5 +1,6 @@
 import "@y-core/forge/jsx/register";
 import { applyAssets, createApp } from "@y-core/forge/app";
+import type { DevAllowance } from "@y-core/forge/dev";
 import type { SecurityHeadersOptions } from "@y-core/forge/security";
 
 import { purgeAuthStores } from "./app/auth";
@@ -10,15 +11,20 @@ import type { AppEnv } from "./app/types";
 import { notFoundController } from "./controllers/not-found";
 import { registerRoutes } from "./router";
 
-/** Builds the Forge app with a fixed CSP. The caller decides the policy. */
-export function createWorker(security: SecurityHeadersOptions) {
+/** Builds the Forge app with a fixed CSP. The caller decides the policy, and whether a development
+ *  allowance rides along — `DevAllowance` is named at type only, so this module cannot mint one. */
+export function createWorker(security: SecurityHeadersOptions, dev?: DevAllowance) {
   const app = createApp<AppEnv>({
     config: configStore,
     shell: appShell,
-    isDebug: (c) => configStore.get(c.env).site.debug,
     notFound: notFoundController,
+    // The error boundary prints the thrown message only under a development entry's `errorDetail`.
+    // It was an env check (`LOG_LEVEL`) until forge 0.1.15, which is the shape a production
+    // deployment could switch on by setting a variable; a token the production bundle cannot mint
+    // is the one that cannot.
+    ...(dev === undefined ? {} : { dev }),
   });
-  registerMiddleware(app, security);
+  registerMiddleware(app, security, dev);
   registerRoutes(app);
   applyAssets(app);
   return app;

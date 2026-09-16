@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test";
 import { assets } from "@assets";
 import { fakeD1, fakeKV } from "@y-core/forge/testing";
 
-import { app } from "../src/worker";
+import { app } from "../../src/worker";
 
 const MOCK_ASSETS = { fetch: async () => new Response("", { status: 200 }) } as unknown as Fetcher;
 
@@ -120,40 +120,39 @@ describe("Layout — nav landmark structure", () => {
 });
 
 describe("Layout — sticky neutralisation on the navbar <details>", () => {
-  it("merges the override classes and drops forge's default sticky/z-40/bg-background/95", async () => {
-    const text = await getHomeHtml();
-    const match = text.match(/<details data-slot="navbar" class="([^"]*)"/);
-    expect(match).not.toBeNull();
-    const classAttr = match?.[1] ?? "";
-    expect(classAttr).toBe(
-      "group backdrop-blur inset-y-0 left-0 md:inset-x-0 md:top-0 md:right-auto md:bottom-auto max-md:bg-transparent max-md:backdrop-blur-none static z-auto bg-transparent",
-    );
+  // The `<header>` is what sticks in this layout. The library's navbar element sticks by default,
+  // and two sticky ancestors is the bug: the panel then scrolls away from the bar that opened it.
+  // Asserted as the tokens that survived the merge rather than as the whole class attribute, which
+  // would fail on a library restyle that changed nothing about this override.
+  function navbarTokens(html: string): Set<string> {
+    return new Set((/<details data-slot="navbar" class="([^"]*)"/.exec(html)?.[1] ?? "").split(" ").filter(Boolean));
+  }
 
-    // Overrides applied by cn():
-    expect(classAttr).toContain("static");
-    expect(classAttr).toContain("z-auto");
-    expect(classAttr).toContain("bg-transparent");
+  it("keeps this app's positioning overrides through the merge", async () => {
+    const tokens = navbarTokens(await getHomeHtml());
 
-    // forge defaults neutralised by cn()'s conflict-group merge:
-    expect(classAttr).not.toContain("sticky");
-    expect(classAttr).not.toContain("z-40");
-    expect(classAttr).not.toContain("bg-background/95");
+    expect(["static", "z-auto", "bg-transparent"].filter((token) => !tokens.has(token))).toEqual([]);
+  });
 
-    // Known limitation: backdrop-blur has no conflict group in cn(), so it survives the merge.
-    expect(classAttr).toContain("backdrop-blur");
+  it("drops the library defaults those overrides conflict with, which is the whole reason they are set", async () => {
+    const tokens = navbarTokens(await getHomeHtml());
+
+    expect(["sticky", "z-40", "bg-background/95"].filter((token) => tokens.has(token))).toEqual([]);
+  });
+
+  it("reads a class attribute at all, so the two cases above are not both passing on an empty match", async () => {
+    expect(navbarTokens(await getHomeHtml()).size).toBeGreaterThan(0);
   });
 });
 
-/** Forge's `menu-link-item` class string, lifted from rendered output. */
-const MENU_ITEM_CLASS =
-  "flex w-full items-center gap-2 rounded-field px-2 py-1.5 text-start text-sm text-popover-foreground bg-transparent border-0 cursor-pointer outline-none hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground state-disabled";
-
-/** Forge's `navbar-link` class string, lifted from rendered output. */
-const BAR_LINK_CLASS =
-  "inline-flex items-center gap-1 rounded-field px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground cursor-pointer focus-ring aria-[current]:bg-accent aria-[current]:font-semibold aria-[current]:text-accent-foreground";
-
-const menuItem = (href: string, label: string): string =>
-  `<a role="menuitem" data-slot="menu-link-item" class="${MENU_ITEM_CLASS}" href="${href}">${label}</a>`;
+/** The anchor pointing at `href`, as its slot, its role and the text it shows. */
+function linkAt(html: string, href: string): { slot: string; role: string; label: string } | null {
+  const escaped = href.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const element = new RegExp(`<a[^>]*\\shref="${escaped}"[^>]*>([^<]*)</a>`).exec(html);
+  if (element === null) return null;
+  const tag = element[0];
+  return { slot: /\sdata-slot="([^"]*)"/.exec(tag)?.[1] ?? "", role: /\srole="([^"]*)"/.exec(tag)?.[1] ?? "", label: element[1] ?? "" };
+}
 
 describe("Layout — nav content (Showcase menu + Contact bar link)", () => {
   it('renders the "Showcase" trigger label distinct from the hard-coded aria-label="Menu" toggle', async () => {
@@ -166,16 +165,16 @@ describe("Layout — nav content (Showcase menu + Contact bar link)", () => {
 
   it("nests Logs, Theme and UI as menu items inside the Showcase popover", async () => {
     const text = await getHomeHtml();
-    expect(text).toContain(menuItem("/showcase/logs", "Logs"));
-    expect(text).toContain(menuItem("/showcase/ui/theme", "Theme"));
-    expect(text).toContain(menuItem("/showcase/ui", "UI"));
+
+    expect([linkAt(text, "/showcase/logs"), linkAt(text, "/showcase/ui/theme"), linkAt(text, "/showcase/ui")]).toEqual([
+      { slot: "menu-link-item", role: "menuitem", label: "Logs" },
+      { slot: "menu-link-item", role: "menuitem", label: "Theme" },
+      { slot: "menu-link-item", role: "menuitem", label: "UI" },
+    ]);
   });
 
-  it("renders Contact as a sibling bar link, not a menu item", async () => {
-    const text = await getHomeHtml();
-    expect(text).toContain(`<a href="/#contact" data-slot="navbar-link" class="${BAR_LINK_CLASS}">Contact</a>`);
-    // Promoted out of the dropdown — it must not also render as a menu row.
-    expect(text).not.toContain(menuItem("/#contact", "Contact"));
+  it("promotes Contact to a bar link, so it is not also a row inside the dropdown", async () => {
+    expect(linkAt(await getHomeHtml(), "/#contact")).toEqual({ slot: "navbar-link", role: "", label: "Contact" });
   });
 
   it("orders the bar as Showcase menu, then Contact, then the theme toggle", async () => {

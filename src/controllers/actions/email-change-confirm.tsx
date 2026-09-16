@@ -1,3 +1,4 @@
+/** @jsxRuntime automatic */
 /** @jsxImportSource @y-core/forge/jsx */
 import { definePage, renderShell } from "@y-core/forge/app";
 import { requestLog } from "@y-core/forge/logging";

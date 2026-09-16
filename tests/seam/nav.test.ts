@@ -4,8 +4,8 @@ import { AUTH_PENDING_SIGNIN_SESSION_KEY, AUTH_SESSION_KEY, AUTH_SIGNED_IN_SESSI
 import { createKVSessionStorage, createSignedCookie } from "@y-core/forge/session";
 import { fakeAuthD1, fakeKV } from "@y-core/forge/testing";
 
-import { resolveNavHref } from "../src/views/nav";
-import { app } from "../src/worker";
+import { resolveNavHref } from "../../src/views/nav";
+import { app } from "../../src/worker";
 
 describe("resolveNavHref", () => {
   const cases: Array<[string, string, string]> = [

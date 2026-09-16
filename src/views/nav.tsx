@@ -1,3 +1,4 @@
+/** @jsxRuntime automatic */
 /** @jsxImportSource @y-core/forge/jsx */
 
 import { AUTH_NAV_FILTERS, AUTH_NAV_SIGNOUT_SLOT } from "@y-core/forge/auth/web";

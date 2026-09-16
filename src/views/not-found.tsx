@@ -1,3 +1,4 @@
+/** @jsxRuntime automatic */
 /** @jsxImportSource @y-core/forge/jsx */
 import { Button, EmptyState } from "@y-core/forge/ui/core";
 

@@ -1,3 +1,4 @@
+/** @jsxRuntime automatic */
 /** @jsxImportSource @y-core/forge/jsx */
 import { renderShell } from "@y-core/forge/app";
 import type { AppContext } from "@y-core/forge/context";

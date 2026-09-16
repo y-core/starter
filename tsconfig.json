@@ -10,6 +10,12 @@
     "moduleResolution": "Bundler",
     "strict": true,
     "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "allowUnreachableCode": false,
+    "erasableSyntaxOnly": true,
     "noEmit": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
@@ -27,9 +33,5 @@
     "tests/**/*.ts",
     "tests/**/*.tsx",
     ".types/**/*.d.ts"
-  ],
-  "exclude": [
-    "tests/browser/**",
-    "tests/workerd/**"
   ]
 }

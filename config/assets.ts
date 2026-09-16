@@ -1,4 +1,5 @@
 import { defineAssetsConfig } from "@y-core/forge/tooling/assets";
+import { forgeUiSpriteSources } from "@y-core/forge/ui/assets/build";
 
 export default defineAssetsConfig({
   paths: { publicDir: "public/assets", publicPrefix: "/assets" },
@@ -10,24 +11,10 @@ export default defineAssetsConfig({
       sources: [
         { path: "src/assets/svg/", files: ["logo.svg"] },
         {
-          path: "node_modules/@y-core/forge/src/ui/assets/core",
-          files: [
-            "chevron-down.svg",
-            "chevron-left.svg",
-            "chevron-right.svg",
-            "close.svg",
-            "hamburger.svg",
-            "spinner.svg",
-            "panel-open.svg",
-            "panel-close.svg",
-            "upload.svg",
-          ],
-        },
-        { path: "node_modules/@y-core/forge/src/ui/assets/theme/", files: ["sun.svg", "moon.svg", "monitor.svg"] },
-        {
           path: "https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/",
           files: ["phone.svg", "mail.svg", "send.svg", "key.svg", { key: "alert", file: "triangle-alert.svg" }],
         },
+        ...forgeUiSpriteSources(),
       ],
     },
   },

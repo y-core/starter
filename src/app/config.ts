@@ -1,4 +1,5 @@
 import { createConfig, env } from "@y-core/forge/config";
+import type { DevAllowance } from "@y-core/forge/dev";
 import { CsrfConfigSchema } from "@y-core/forge/form";
 import type { OriginProtectionOptions, RateLimitOptions, SecurityHeadersOptions } from "@y-core/forge/security";
 import { BaseUrlConfigSchema, NONCE, TURNSTILE_CSP } from "@y-core/forge/security";
@@ -28,6 +29,13 @@ export const SITE_ORIGIN = "https://forge-starter.workers.dev";
 /** What this deployment demands of each second factor, `"off"` included. A developer edits this; nothing else does. */
 export const AUTH_SECOND_FACTORS: Record<StepUpFactor, "mandatory" | "optional" | "off"> = { "totp-app": "mandatory", passkey: "optional" };
 
+// Three keys are deliberately absent, and adding one is a regression rather than hardening.
+// `styleSrc`/`fontSrc`/COOP/CORP/HSTS are already forge's defaults, so writing them here copies
+// them into app code and stops this app's posture tracking forge across an upgrade.
+// `permissionsPolicy` inverts: forge emits `()` for every feature the caller omits, so a key
+// naming one *enables* it. COEP breaks the Turnstile frame either way, and no row of the
+// `standard` gate would catch it.
+/** The production CSP, layered by `worker.dev.ts` alone and never widened here. */
 export const securityHeaders: SecurityHeadersOptions = {
   scriptSrc: ["'self'", NONCE, TURNSTILE_CSP],
   connectSrc: ["'self'", TURNSTILE_CSP],
@@ -47,7 +55,7 @@ export const AppConfigSchema = v.object({
   }),
   security: v.object({ csrf: CsrfConfigSchema }),
   // `rpId` and `origin` are absent by design: both derive from `site.url`, so a second dev origin
-  // needs no fourth declaration site (`CONFIGURATION_AND_SECRETS.md` §3d).
+  // needs no further declaration site. `.dev.vars.example` names the three `SITE_ORIGIN` has.
   auth: v.object({
     keyRing: v.pipe(
       v.string(),
@@ -70,10 +78,7 @@ export const AppConfigSchema = v.object({
       senderName: v.string(),
       to: v.optional(v.string(), CONFIG.EMAIL_TO),
     }),
-    // `devHostname` has no default: absent means "compare against the site origin's hostname",
-    // which is production's only behaviour. Consulting it at all is licensed by `src/worker.dev.ts`,
-    // so setting it in production is inert (`WORKERS_PLATFORM.md` §4e).
-    turnstile: v.object({ secretKey: v.string(), siteKey: v.string(), devHostname: v.optional(v.string()) }),
+    turnstile: v.object({ secretKey: v.string(), siteKey: v.string() }),
   }),
 });
 
@@ -83,7 +88,7 @@ export const appConfig = {
   auth: { keyRing: env("AUTH_KEY_RING"), sessionSecret: env("SESSION_SECRET"), rpName: "Forge Studio" },
   services: {
     email: { apiKey: env("EMAIL_API_KEY"), apiUrl: "https://api.mailchannels.net/tx/v1/send", senderName: "Forge Studio" },
-    turnstile: { secretKey: env("TURNSTILE_SECRET_KEY"), siteKey: env("TURNSTILE_SITE_KEY"), devHostname: env("TURNSTILE_DEV_HOSTNAME") },
+    turnstile: { secretKey: env("TURNSTILE_SECRET_KEY"), siteKey: env("TURNSTILE_SITE_KEY") },
   },
 };
 
@@ -98,12 +103,14 @@ export const originPolicy: OriginProtectionOptions<Env> = { allowedOrigins: (c) 
 // key is the only thing a group can tighten. The sign-in surface shares one budget per address:
 // spreading attempts across `/auth/signin`, `/auth/signup` and `/auth/verify` must not buy more of
 // them. The console keys per route, so an administrator reading one page cannot lock themselves out
-// of the next. `required: false` matches `rateLimitGuard` — a `wrangler dev` with no binding degrades.
+// of the next. Both take the allowance `rateLimitGuard` takes — a `wrangler dev` with no binding
+// degrades instead of answering 503, and only under the development entry that minted it.
 /** The budget every unauthenticated auth POST shares, keyed by caller alone. */
-export const authLimitPolicy: RateLimitOptions<Env> = { limiter: (c) => c.env.RATE_LIMITER, required: false, trustCfHeaders: true };
+export function authLimitPolicy(dev?: DevAllowance): RateLimitOptions<Env> {
+  return { limiter: (c) => c.env.RATE_LIMITER, trustCfHeaders: true, ...(dev === undefined ? {} : { dev }) };
+}
 
 /** The signed-in console's budget, keyed per route so one page's limit is not another's. */
-export const consoleLimitPolicy: RateLimitOptions<Env> = {
-  ...authLimitPolicy,
-  key: (c) => `${c.request.headers.get("CF-Connecting-IP") ?? "unknown"}:${new URL(c.request.url).pathname}`,
-};
+export function consoleLimitPolicy(dev?: DevAllowance): RateLimitOptions<Env> {
+  return { ...authLimitPolicy(dev), key: (c) => `${c.request.headers.get("CF-Connecting-IP") ?? "unknown"}:${new URL(c.request.url).pathname}` };
+}

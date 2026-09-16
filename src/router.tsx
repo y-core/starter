@@ -1,3 +1,5 @@
+/** @jsxRuntime automatic */
+/** @jsxImportSource @y-core/forge/jsx */
 import { CoreIcon } from "@assets";
 import type { Forge } from "@y-core/forge/app";
 import { healthCheck } from "@y-core/forge/app";

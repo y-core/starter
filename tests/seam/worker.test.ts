@@ -2,7 +2,8 @@ import { describe, expect, it } from "bun:test";
 
 import { fakeD1, fakeKV, mockExecutionContext } from "@y-core/forge/testing";
 
-import worker, { app } from "../src/worker";
+import worker, { app } from "../../src/worker";
+import { sqliteD1 } from "../sqlite-d1";
 
 const MOCK_ASSETS = { fetch: async () => new Response("", { status: 200 }) } as unknown as Fetcher;
 const MOCK_ASSETS_404 = { fetch: async () => new Response("Not Found", { status: 404 }) } as unknown as Fetcher;
@@ -33,19 +34,35 @@ describe("the worker module", () => {
     expect(res.status).toBe(200);
   });
 
-  // The purge itself is forge's and is tested there; what this wiring owes is that the cron reaches
-  // it at all, which the two statements it batches against `AUTH_DB` are the only evidence of. The
-  // handler's own promise is awaited rather than a `waitUntil` queue drained, because that promise is
-  // what the cron run's outcome is computed from — and what the purge's throw has to land inside.
-  it("reclaims the expired challenge and nonce rows on a scheduled run", async () => {
-    const db = fakeD1();
+  // Against this repository's own migration in real SQLite, so what survives the run is decided by
+  // the database rather than by a statement the test copied out of the library. The handler's own
+  // promise is awaited rather than a `waitUntil` queue drained, because that promise is what the
+  // cron run's outcome is computed from — and what the purge's throw has to land inside.
+  it("reclaims the expired challenge and nonce rows on a scheduled run, and leaves the live ones", async () => {
+    const db = sqliteD1();
+    const past = Date.now() - 60_000;
+    const future = Date.now() + 60_000;
+    await db.exec(`INSERT INTO auth_challenges (key, value, expires_at) VALUES ('stale', 'x', ${past}), ('live', 'x', ${future})`);
+    await db.exec(`INSERT INTO auth_nonces (key, expires_at) VALUES ('stale', ${past}), ('live', ${future})`);
 
     await worker.scheduled({} as ScheduledController, { ...MINIMUM_ENV, AUTH_DB: db } as unknown as Env, mockExecutionContext());
 
-    expect(db.calls.map((call) => call.sql)).toEqual([
-      "DELETE FROM auth_challenges WHERE expires_at <= ?",
-      "DELETE FROM auth_nonces WHERE expires_at <= ?",
-    ]);
+    expect(db.rows<{ key: string }>("SELECT key FROM auth_challenges").map((row) => row.key)).toEqual(["live"]);
+    expect(db.rows<{ key: string }>("SELECT key FROM auth_nonces").map((row) => row.key)).toEqual(["live"]);
+    db.close();
+  });
+
+  it("leaves a database with nothing expired untouched, so the case above is a purge and not a wipe", async () => {
+    const db = sqliteD1();
+    const future = Date.now() + 60_000;
+    await db.exec(`INSERT INTO auth_challenges (key, value, expires_at) VALUES ('live', 'x', ${future})`);
+    await db.exec(`INSERT INTO auth_nonces (key, expires_at) VALUES ('live', ${future})`);
+
+    await worker.scheduled({} as ScheduledController, { ...MINIMUM_ENV, AUTH_DB: db } as unknown as Env, mockExecutionContext());
+
+    expect(db.rows("SELECT key FROM auth_challenges").length).toBe(1);
+    expect(db.rows("SELECT key FROM auth_nonces").length).toBe(1);
+    db.close();
   });
 });
 

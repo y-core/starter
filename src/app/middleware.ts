@@ -1,26 +1,51 @@
-import type { Forge } from "@y-core/forge/app";
+import { applyMiddlewareChain, type Forge } from "@y-core/forge/app";
 import { requireAuth, requireEnrolment, resolveAuth } from "@y-core/forge/auth/web";
-import { bindingSetSchema, getAppContext, type Middleware, validateBindings } from "@y-core/forge/context";
+import { bindingSetSchema, getAppContext, type Middleware } from "@y-core/forge/context";
+import type { DevAllowance } from "@y-core/forge/dev";
 import { csrfProtection, importCsrfKey } from "@y-core/forge/form";
 import { isHxRequest } from "@y-core/forge/html/htmx";
-import { consoleChannel, kvLogChannel, requestLogger } from "@y-core/forge/logging";
-import {
-  cors,
-  createSecurityHeaders,
-  originProtection,
-  rateLimit,
-  requestId,
-  requestIdCtx,
-  type SecurityHeadersOptions,
-} from "@y-core/forge/security";
+import { consoleChannel, kvLogChannel, type LogRecord, withRedaction } from "@y-core/forge/logging";
+import { cors, originProtection, rateLimit, requestIdCtx, type SecurityHeadersOptions } from "@y-core/forge/security";
 import { sessionCtx } from "@y-core/forge/session";
 import { schemaHealthMonitor } from "@y-core/forge/storage/db";
 
 import { routes } from "../routes";
 import { authEnrolmentOptions, authGuardGroups, authIdentityOptions, authSessionGuard } from "./auth";
 import { configStore, originPolicy } from "./config";
-import { turnstileHostnameCtx } from "./context";
+import { devAllowanceCtx } from "./context";
 import type { AppConfig, AppEnv } from "./types";
+
+/** Field names whose value never reaches the KV log store, whatever a call site passes. */
+const PERSISTED_DENY = [
+  "email",
+  "name",
+  "displayName",
+  "userName",
+  "phone",
+  "message",
+  // A provider error body routinely echoes the recipient address back.
+  "body",
+  "token",
+  "password",
+  "secret",
+  "cookie",
+  "authorization",
+];
+
+/** Strips PII fields and the stack from a record on its way to KV, which outlives a console line by
+ *  months (`BOUNDARIES.md` §4a). The console channel is deliberately left unwrapped: a stack is what
+ *  makes a local failure readable, and nothing retains it. */
+function redactPersisted(record: LogRecord): LogRecord {
+  if (!record.data) return record;
+  const data: Record<string, unknown> = { ...record.data };
+  for (const field of PERSISTED_DENY) if (field in data) data[field] = "[redacted]";
+  const { error } = data;
+  if (error !== null && typeof error === "object" && "stack" in error) {
+    const { stack: _stack, ...rest } = error as Record<string, unknown>;
+    data["error"] = rest;
+  }
+  return { ...record, data };
+}
 
 /** Refuses a mutation that did not come from htmx: the fragment responses are unusable to any other
  *  client, so accepting one would answer a full-page caller with a bare `<div>`. */
@@ -51,19 +76,11 @@ export const accountGuards: readonly Middleware[] = [requireAuth<AppEnv>(authIde
  *  alone, which accepts a request carrying neither `Origin` nor `Referer`. */
 export const originGuard: Middleware = originProtection<AppEnv>(originPolicy);
 
+// An absent `RATE_LIMITER` answers 503 unless a development entry licenses the skip, so the
+// allowance is read off the request rather than fixed when the guard is built.
 export const rateLimitGuard: Middleware = (context, next) => {
-  return rateLimit<AppEnv>({ limiter: (c) => c.env.RATE_LIMITER, required: false, trustCfHeaders: true })(context, next);
-};
-
-/** Publishes `TURNSTILE_DEV_HOSTNAME` to the submission pipeline. Registered only by
- *  `worker.dev.ts`, so the variable is inert in production however it is set: the testing keys make
- *  siteverify answer `hostname=example.com` whatever origin the widget ran on, and an allowance the
- *  production bundle does not import is the only shape that may state so (`WORKERS_PLATFORM.md` §4e). */
-export const turnstileHostname: Middleware = (context, next) => {
-  const c = getAppContext<AppEnv, Record<string, string>, AppConfig>(context);
-  const hostname = configStore.get(c.env).services.turnstile.devHostname;
-  if (hostname !== undefined) turnstileHostnameCtx.set(c, hostname);
-  return next();
+  const dev = devAllowanceCtx.getOptional(getAppContext<AppEnv, Record<string, string>, AppConfig>(context));
+  return rateLimit<AppEnv>({ limiter: (c) => c.env.RATE_LIMITER, trustCfHeaders: true, ...(dev === undefined ? {} : { dev }) })(context, next);
 };
 
 export const csrfVerifyGuard: Middleware = csrfProtection({
@@ -81,53 +98,63 @@ export const authCsrfGuard: Middleware = csrfProtection({
   subject: (context) => sessionCtx.getOptional(context)?.id,
 });
 
-export function registerMiddleware(app: Forge<AppEnv>, security: SecurityHeadersOptions): void {
-  // Cloudflare strips and re-writes `CF-*` headers at the edge, so on Workers they are trustworthy.
-  // Forge defaults to distrust because the same code behind a bare proxy would let a caller forge them.
-  app.use("*", requestId({ trustCfHeaders: true }));
-  app.use("*", createSecurityHeaders(security));
-  // Both bindings are optional: `wrangler dev` without a full configuration leaves them undefined,
-  // and the code degrades — console-only logging, a no-op rate limiter. The schema states that, and
-  // still fails a binding that is present with the wrong shape. That refusal throws, so it runs
-  // after the headers are queued and before `requestLogger` reads `LOGS_KV`.
-  app.use(
-    "*",
-    validateBindings(
-      bindingSetSchema([
-        { name: "LOGS_KV", methods: ["get", "put", "list"], label: "a KV namespace binding", optional: true },
-        { name: "RATE_LIMITER", methods: ["limit"], label: "a rate-limiter binding", optional: true },
-        // Neither is optional: auth is correctness-critical, so an absent binding fails before the
-        // first request rather than degrading a guard into a no-op (`DATA_STORAGE.md` §5a).
-        { name: "AUTH_DB", methods: ["prepare"], label: "the auth D1 binding" },
-        { name: "AUTH_KV", methods: ["get", "put"], label: "the auth KV binding" },
-      ]),
-    ),
-  );
-  // Two D1 reads per isolate, both on `waitUntil`, so no request waits on them: a database whose
-  // applied schema has drifted from what the migrations recorded says so in the log rather than in
-  // whichever query fails first. The default migrations table is the one this app's wrangler config
-  // uses, so the binding is all it needs.
-  app.use("*", schemaHealthMonitor<AppEnv>({ binding: (c) => c.env.AUTH_DB }));
-  app.use(
-    "*",
-    requestLogger<AppEnv>({
-      channels: (c) => (c.env.LOGS_KV ? [consoleChannel(), kvLogChannel(c.env.LOGS_KV)] : [consoleChannel()]),
+/** Publishes the development allowance on every request, so a handler takes it from the context
+ *  rather than from a second entry-point wiring. `DevAllowance` is named at type only here, so the
+ *  production bundle holds no module that could mint one. */
+function devAllowanceGuard(dev: DevAllowance): Middleware {
+  return (context, next) => {
+    devAllowanceCtx.set(getAppContext<AppEnv, Record<string, string>, AppConfig>(context), dev);
+    return next();
+  };
+}
+
+/** Answers a cross-origin API call against the allowlist this request's config carries. */
+const corsGuard: Middleware = (context, next) => {
+  const c = getAppContext<AppEnv, Record<string, string>, AppConfig>(context);
+  return cors({ origins: configStore.get(c.env).site.url.allowedOrigins })(context, next);
+};
+
+export function registerMiddleware(app: Forge<AppEnv>, security: SecurityHeadersOptions, dev?: DevAllowance): void {
+  applyMiddlewareChain<AppEnv>(app, {
+    // Ahead of `requestId`, because a handler may read the allowance and nothing here renders with
+    // the nonce (`forge/ROUTING_AND_MIDDLEWARE.md` §3e).
+    ...(dev === undefined ? {} : { before: [devAllowanceGuard(dev)] }),
+    // Cloudflare strips and re-writes `CF-*` headers at the edge, so on Workers they are trustworthy.
+    // Forge defaults to distrust because the same code behind a bare proxy would let a caller forge
+    // them. One flag settles it for `requestId` and for every group's rate limiter alike.
+    trustCfHeaders: true,
+    logging: {
+      channels: (c) => (c.env.LOGS_KV ? [consoleChannel(), withRedaction(kvLogChannel(c.env.LOGS_KV), redactPersisted)] : [consoleChannel()]),
       bindings: (c) => ({ requestId: requestIdCtx.getOptional(c) }),
-    }),
-  );
-  app.use("/api/*", (context, next) => {
-    const c = getAppContext<AppEnv, Record<string, string>, AppConfig>(context);
-    const origins = configStore.get(c.env).site.url.allowedOrigins;
-    return cors({ origins })(context, next);
+    },
+    securityHeaders: security,
+    // Both KV bindings are optional: `wrangler dev` without a full configuration leaves them
+    // undefined, and the code degrades — console-only logging, a no-op rate limiter. The schema
+    // states that, and still fails a binding that is present with the wrong shape. That refusal
+    // throws, which is why the builder runs it after the headers (`forge/ROUTING_AND_MIDDLEWARE.md` §3e).
+    bindings: bindingSetSchema([
+      { name: "LOGS_KV", methods: ["get", "put", "list"], label: "a KV namespace binding", optional: true },
+      { name: "RATE_LIMITER", methods: ["limit"], label: "a rate-limiter binding", optional: true },
+      // Neither is optional: auth is correctness-critical, so an absent binding fails before the
+      // first request rather than degrading a guard into a no-op (`BOUNDARIES.md` §5).
+      { name: "AUTH_DB", methods: ["prepare"], label: "the auth D1 binding" },
+      { name: "AUTH_KV", methods: ["get", "put"], label: "the auth KV binding" },
+    ]),
+    session: authSessionGuard,
+    // Two D1 reads per isolate for the schema monitor, both on `waitUntil`, so no request waits on
+    // them: a database whose applied schema has drifted from what the migrations recorded says so in
+    // the log rather than in whichever query fails first.
+    globals: [schemaHealthMonitor<AppEnv>({ binding: (c) => c.env.AUTH_DB }), navIdentityGuard],
+    guards: [
+      { paths: ["/api/*"], guards: [corsGuard] },
+      // `/welcome` embeds forge's sign-in view, whose form posts to `/auth/signin`. Its token has to
+      // be minted under the same session binding that path is verified with, so the route joins the
+      // auth prefixes here rather than taking `csrfVerifyGuard`'s subject-less one.
+      { paths: ["/auth/*", "/account/*", "/admin/*", routes.welcome.href(), routes.account.href()], guards: [authCsrfGuard] },
+      ...authGuardGroups(dev),
+      // This app's own signed-in landing page, so it carries the guards forge's account group
+      // carries rather than rendering an empty shell to a visitor with no session.
+      { paths: [routes.account.href()], guards: [...accountGuards] },
+    ],
   });
-  app.use("*", authSessionGuard);
-  app.use("*", navIdentityGuard);
-  // `/welcome` embeds forge's sign-in view, whose form posts to `/auth/signin`. Its token has to be
-  // minted under the same session binding that path is verified with, so the route joins the auth
-  // prefixes here rather than taking `csrfVerifyGuard`'s subject-less one.
-  app.use(["/auth/*", "/account/*", "/admin/*", routes.welcome.href(), routes.account.href()], authCsrfGuard);
-  for (const group of authGuardGroups()) app.use([...group.paths], ...(group.middleware ?? []));
-  // This app's own signed-in landing page, so it carries the guards forge's account group carries
-  // rather than rendering an empty shell to a visitor with no session.
-  app.use(routes.account.href(), ...accountGuards);
 }

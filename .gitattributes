@@ -1,4 +1,4 @@
 # Written by `warden sync` and never edited here (AGENT_GUIDE.md §6d), so a version bump would
 # otherwise flood review with a diff nobody reads.
 .claude/agents/**        linguist-generated=true -diff
-.claude/commands/**      linguist-generated=true -diff
+.claude/skills/**        linguist-generated=true -diff

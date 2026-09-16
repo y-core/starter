@@ -3,14 +3,40 @@
   "name": "forge-starter",
   "main": "src/worker.ts",
   "compatibility_date": "2026-05-14",
+  // Stated here rather than passed to one command, because a bundle setting that differs between the
+  // path a deployment takes and the path a local production run takes means the production run is
+  // not running the production code. `wrangler deploy` does not minify by default; `dev` opts out
+  // with `--no-minify` so a stack trace stays readable.
+  "minify": true,
+  // Stated, not defaulted: this is a template nobody routes publicly, so a fork opts into exposure
+  // deliberately rather than inheriting a `workers.dev` subdomain from an omitted key.
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [],
   "dev": {
     "ip": "0.0.0.0",
     "port": 8787,
     "local_protocol": "https"
   },
+  // Stated rather than defaulted: a deployment with no block takes whatever the account default is,
+  // and that default has changed. What reaches here is the console channel; the KV channel is the
+  // one carrying `redactPersisted` (`src/app/middleware.ts`).
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  // The block's presence is the mechanism, not its contents: it is what stops `wrangler types`
+  // inferring `Env` from the gitignored `.dev.vars`, which is how the generated declaration came to
+  // carry `TURNSTILE_DEV_HOSTNAME` — a key no file in `src/` reads.
+  "secrets": {
+    "required": ["SITE_ORIGIN", "LOG_LEVEL", "CSRF_SECRET", "AUTH_KEY_RING", "SESSION_SECRET", "EMAIL_API_KEY", "TURNSTILE_SECRET_KEY", "TURNSTILE_SITE_KEY"]
+  },
   "assets": {
     "binding": "ASSETS",
     "directory": "./public",
+    // `favicon.ico` is the only icon output carrying `root: true`; every other one lands under
+    // `/static/`, which the line above already excludes. `validate-asset-root` holds this list to
+    // `config/assets.ts` in both directions.
     "run_worker_first": ["/*", "!/static/*", "!/favicon.ico"],
     "not_found_handling": "none"
   },
@@ -30,7 +56,10 @@
     {
       "binding": "AUTH_DB",
       "database_name": "forge-starter-auth",
-      "database_id": "auth_db_local"
+      "database_id": "auth_db_local",
+      // Stated rather than defaulted, as the KV `preview_id` above is: without it a preview run
+      // binds the same database a deployment does.
+      "preview_database_id": "auth_db_local"
     }
   ],
   // Hourly, because the purge is housekeeping: every read already holds a row against the clock, so

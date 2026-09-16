@@ -2,8 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test"
 
 import { nullLogger } from "@y-core/forge/testing";
 
-import type { EmailConfig } from "../src/app/types";
-import { sendContactEmail } from "../src/services/email";
+import type { EmailConfig } from "../../src/app/types";
+import { sendContactEmail } from "../../src/services/email";
 
 const EMAIL_API_URL = "https://api.mailchannels.net/tx/v1/send";
 
