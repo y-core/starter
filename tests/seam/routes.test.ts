@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
 import { CSRF_FIELD_DEFAULT, TURNSTILE_FIELD_DEFAULT } from "@y-core/forge/form";
-import { createTestContext, fakeD1, fakeKV, mintTestCsrfToken } from "@y-core/forge/testing";
+import { attrsOf, createTestContext, elementOf, fakeD1, fakeKV, mintTestCsrfToken } from "@y-core/forge/testing";
 
 import type { AppConfig, AppEnv } from "../../src/app/types";
 import { ContactSchema, contactAction } from "../../src/controllers/actions/contact";
 import { app } from "../../src/worker";
 import { devApp } from "../../src/worker.dev";
+import { ADMIN_BOOTSTRAP_SECRET, AUTH_KEY_RING, CONFIG_ENV, CSRF_SECRET, SESSION_SECRET } from "../env";
 
 const SITE_ORIGIN = "https://example.com";
 
@@ -21,13 +22,8 @@ const BASE_TEST_CONFIG: AppConfig = {
     url: { origin: SITE_ORIGIN, hostname: "example.com", protocol: "https:", allowedOrigins: [SITE_ORIGIN, "https://www.example.com"] },
     debug: false,
   },
-  security: { csrf: { secret: "de7bf4aef360e3a4c3254c9cec7e45d0f1fd98cc2219c62b5b07e826ba1bcc6e" } },
-  auth: {
-    keyRing: ["9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c3d5e"],
-    sessionSecret: "6f2b4a7c0d3e5f7a9b1c3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e",
-    bootstrapSecret: "3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c",
-    rpName: "Forge Studio",
-  },
+  security: { csrf: { secret: CSRF_SECRET } },
+  auth: { keyRing: [AUTH_KEY_RING], sessionSecret: SESSION_SECRET, bootstrapSecret: ADMIN_BOOTSTRAP_SECRET, rpName: "Forge Studio" },
   services: {
     email: {
       apiKey: "test-api-key",
@@ -68,20 +64,10 @@ function refusal(field: string): string {
 
 const MOCK_ASSETS = { fetch: async () => new Response("", { status: 200 }) };
 
-const TEST_CSRF_SECRET = "de7bf4aef360e3a4c3254c9cec7e45d0f1fd98cc2219c62b5b07e826ba1bcc6e";
-
 const MINIMUM_ENV = {
   ASSETS: MOCK_ASSETS,
   SITE_ORIGIN,
-  CSRF_SECRET: TEST_CSRF_SECRET,
-  EMAIL_API_KEY: "test-api-key",
-  EMAIL_FROM: "from@example.com",
-  EMAIL_TO: "to@example.com",
-  TURNSTILE_SECRET_KEY: "test-ts-key",
-  TURNSTILE_SITE_KEY: "test-site-key",
-  AUTH_KEY_RING: "9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c3d5e",
-  SESSION_SECRET: "6f2b4a7c0d3e5f7a9b1c3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e",
-  ADMIN_BOOTSTRAP_SECRET: "3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c",
+  ...CONFIG_ENV,
   AUTH_KV: fakeKV(),
   AUTH_DB: fakeD1(),
   // Present because an absent `RATE_LIMITER` is a 503 on the production entry rather than a skipped
@@ -106,7 +92,7 @@ beforeAll(async () => {
     }
     return _savedFetch(url, ...args);
   };
-  _csrfToken = await mintTestCsrfToken(TEST_CSRF_SECRET, "/api/contact");
+  _csrfToken = await mintTestCsrfToken(CSRF_SECRET, "/api/contact");
 });
 
 afterAll(() => {
@@ -850,15 +836,26 @@ describe("GET /showcase/logs — full page", () => {
   it("renders the viewer inside the app's Layout, not a shell of forge's own", async () => {
     const res = await devApp.request("/showcase/logs", {}, logsEnv());
     const text = await res.text();
-    expect(text).toContain("<!DOCTYPE html>");
-    expect(text).toContain("<title>Logs — Forge Studio</title>");
-    expect(text).toContain('<h1 class="text-2xl font-semibold tracking-tight text-balance text-foreground">Request Log</h1>');
-    expect(text).toContain('data-scope="theme"');
-    expect(text).toContain('hx-get="/showcase/logs"');
-    expect(text).toContain(">Timestamp</th>");
-    expect(text).toContain(">Level</th>");
-    expect(text).toContain(">Request ID</th>");
-    expect(text).toContain(EXPECTED_EMPTY_TBODY);
+    expect(text.startsWith("<!DOCTYPE html>")).toBe(true);
+    expect(elementOf(text, "title")).toBe("<title>Logs — Forge Studio</title>");
+    expect(elementOf(text, "h1")).toBe('<h1 class="text-2xl font-semibold tracking-tight text-balance text-foreground">Request Log</h1>');
+    expect(attrsOf(text, 'data-scope="theme"')).toEqual({ "data-scope": "theme", "data-island-state": "{&quot;pref&quot;:&quot;system&quot;}" });
+    expect(attrsOf(text, 'hx-get="/showcase/logs"')).toEqual({
+      "hx-get": "/showcase/logs",
+      "hx-target": "#log-tbody",
+      "hx-swap": "outerHTML",
+      "hx-indicator": "#log-tbody",
+      "hx-disabled-elt": "find button[type=&#39;submit&#39;]",
+      "hx-push-url": "true",
+    });
+    expect([...elementOf(text, "thead").matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((match) => match[1])).toEqual([
+      "Timestamp",
+      "Level",
+      "Prefix",
+      "Message",
+      "Request ID",
+    ]);
+    expect(elementOf(text, "tbody", 'id="log-tbody"')).toBe(EXPECTED_EMPTY_TBODY);
   });
 
   it("includes required security headers", async () => {
@@ -911,16 +908,21 @@ describe("POST /api/contact — email delivery failure", () => {
     }
   });
 
+  const REJECTION = `no such mailbox: ${VALID_FORM_WITH_TOKEN.get("email")}`;
+
   // The provider echoes the recipient address back in its rejection body, which `src/services/email.ts`
   // logs structurally — so this is the path a real address takes towards the store that outlives it.
-  it("keeps the rejected provider body out of the KV log store (BOUNDARIES §4a)", async () => {
+  /** Both channels of one submission, with the provider's answer chosen by the case. */
+  async function capturedDelivery(provider: () => Response, expectStatus: number): Promise<{ stored: string[]; console: string[] }> {
     const savedFetch = globalThis.fetch;
-    const rejection = `no such mailbox: ${VALID_FORM_WITH_TOKEN.get("email")}`;
+    const savedLog = console.log;
+    const logged: string[] = [];
     globalThis.fetch = async (url, ...args) => {
-      if (url.toString() === EMAIL_API_URL) return new Response(rejection, { status: 503 });
+      if (url.toString() === EMAIL_API_URL) return provider();
       if (url.toString() === TURNSTILE_URL) return new Response(JSON.stringify({ success: true, hostname: "example.com" }));
       return savedFetch(url, ...args);
     };
+    console.log = (...args: unknown[]) => logged.push(args.map(String).join(" "));
 
     const kv = fakeKV();
     try {
@@ -928,14 +930,46 @@ describe("POST /api/contact — email delivery failure", () => {
         ...MINIMUM_ENV,
         LOGS_KV: kv,
       } as unknown as Env);
-      expect(response.status).toBe(500);
+      expect(response.status).toBe(expectStatus);
     } finally {
       globalThis.fetch = savedFetch;
+      console.log = savedLog;
     }
 
     const stored = await Promise.all((await kv.list()).keys.map(async (entry) => (await kv.get(entry.name, { type: "text" })) ?? ""));
+    return { stored, console: logged };
+  }
+
+  const rejectedDelivery = () => capturedDelivery(() => new Response(REJECTION, { status: 503 }), 500);
+  const acceptedDelivery = () => capturedDelivery(() => new Response(null, { status: 202 }), 200);
+
+  it("keeps the rejected provider body out of the KV log store (BOUNDARIES §4a)", async () => {
+    const { stored } = await rejectedDelivery();
+
     expect(stored.length).toBeGreaterThan(0);
-    expect(stored.join("\n")).not.toContain(rejection);
+    expect(stored.join("\n")).not.toContain(REJECTION);
     expect(stored.some((record) => record.includes('"body":"[redacted]"'))).toBe(true);
+  });
+
+  // §4a bans the address on **any** channel, and Workers Logs ingests all of this one: the console
+  // half is what a per-channel wrapper left unredacted, so it is asserted beside the KV half.
+  it("keeps it out of the console channel too, which observability ingests in full (BOUNDARIES §4a)", async () => {
+    const { console: logged } = await rejectedDelivery();
+
+    expect(logged.length).toBeGreaterThan(0);
+    expect(logged.join("\n")).not.toContain(REJECTION);
+    expect(logged.some((line) => line.includes('"body":"[redacted]"'))).toBe(true);
+  });
+
+  // Forge's default set covers neither `name` nor `message`, and this app adds no stem for them
+  // because it writes neither into a record — so absence is what holds the claim, not redaction.
+  it("puts none of the submitted name, phone or message on either channel (BOUNDARIES §4a)", async () => {
+    const refused = await rejectedDelivery();
+    const accepted = await acceptedDelivery();
+
+    const everything = [...refused.stored, ...refused.console, ...accepted.stored, ...accepted.console].join("\n");
+    for (const field of ["name", "phone", "message"] as const) {
+      expect(everything).not.toContain(VALID_FORM_WITH_TOKEN.get(field));
+    }
   });
 });

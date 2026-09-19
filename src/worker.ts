@@ -32,9 +32,14 @@ export const app = createWorker(securityHeaders);
 
 // A module object rather than the app itself: `fetch` is a method on the Forge instance, so it is
 // bound here, and `scheduled` has nowhere else to live — the cron is a second entry point, not a route.
-export default {
-  fetch: (request: Request, env: AppEnv, ctx: ExecutionContext) => app.fetch(request, env, ctx),
-  scheduled: async (_event: ScheduledController, env: AppEnv, _ctx: ExecutionContext) => {
-    await purgeAuthStores(env);
-  },
-};
+/** Wraps an app as the two-entry module a Wrangler entry point exports; both entries build theirs here. */
+export function createWorkerModule(forge: ReturnType<typeof createWorker>) {
+  return {
+    fetch: (request: Request, env: AppEnv, ctx: ExecutionContext) => forge.fetch(request, env, ctx),
+    scheduled: async (_event: ScheduledController, env: AppEnv, _ctx: ExecutionContext) => {
+      await purgeAuthStores(env);
+    },
+  };
+}
+
+export default createWorkerModule(app);

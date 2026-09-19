@@ -1,6 +1,14 @@
 import { CoreIcon } from "@assets";
 import type { MiddlewareGuardGroup } from "@y-core/forge/app";
-import type { AuthDeferral, AuthFactorOffer, AuthFactorRegistry, AuthFactorService, AuthKeyRing, UserStore } from "@y-core/forge/auth";
+import type {
+  AuthDeferral,
+  AuthFactorOffer,
+  AuthFactorRegistry,
+  AuthFactorService,
+  AuthKeyRing,
+  AuthNotifier,
+  UserStore,
+} from "@y-core/forge/auth";
 import {
   createAdminUserStore,
   createChallengeStore,
@@ -29,8 +37,9 @@ import { createSignedCookie, createKVSessionStorage, sessionCtx, sessionMiddlewa
 import { createD1Client } from "@y-core/forge/storage/db";
 
 import { accountRouteMap, adminRouteMap, authRouteMap, routes } from "../routes";
-import { consoleNotifier } from "../services/auth.notify";
+import { createConsoleNotifier } from "../services/auth.notify";
 import { AUTH_SECOND_FACTORS, authLimitPolicy, configStore, consoleLimitPolicy, originPolicy } from "./config";
+import { devAllowanceCtx } from "./dev";
 import type { AppConfig, AppEnv, StepUpFactor } from "./types";
 
 type AuthStores = ReturnType<typeof authStores>;
@@ -125,6 +134,8 @@ interface AuthFactorOptions {
   readonly origin: string;
   /** This request's session; the challenge every passkey ceremony issues is bound to it. */
   readonly sessionId: string;
+  /** Delivers every code and link this request issues; one instance, shared by the factors and the flows. */
+  readonly notifier: AuthNotifier;
 }
 
 function authFactors(stores: AuthStores, keys: AuthKeyRing, options: AuthFactorOptions): AuthFactorRegistry {
@@ -132,7 +143,7 @@ function authFactors(stores: AuthStores, keys: AuthKeyRing, options: AuthFactorO
     keys,
     state: stores.otpState,
     nonces: stores.nonces,
-    notifier: consoleNotifier,
+    notifier: options.notifier,
     address: (userId) => authAddress(stores.users, userId),
   });
   const passkeyFactor = createPasskeyFactor({
@@ -183,11 +194,15 @@ async function buildAuthRequestServices(c: ForgeAppContext<AppEnv>): Promise<Aut
   const config = configStore.get(c.env);
   const keys = await importAuthKeyRing(config.auth.keyRing as [string, ...string[]]);
   const stores = authStores(c.env);
+  // The same gate `showLogsController` uses: a token only `worker.dev.ts` mints, where an env var
+  // would be a value a production deployment could set.
+  const notifier = createConsoleNotifier(devAllowanceCtx.getOptional(c) !== undefined);
   const factors = authFactors(stores, keys, {
     rpId: config.site.url.hostname,
     rpName: config.auth.rpName,
     origin: config.site.url.origin,
     sessionId: sessionCtx.get(c).id,
+    notifier,
   });
   const defer: AuthDeferral = (work) => c.executionCtx.waitUntil(work);
 
@@ -202,7 +217,7 @@ async function buildAuthRequestServices(c: ForgeAppContext<AppEnv>): Promise<Aut
       keys,
       users: stores.users,
       nonces: stores.nonces,
-      notifier: consoleNotifier,
+      notifier,
       defer,
       confirmUrl: (token) => `${config.site.url.origin}${routes.authEmailConfirm.href()}?token=${encodeURIComponent(token)}`,
     }),

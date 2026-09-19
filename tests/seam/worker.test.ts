@@ -1,9 +1,10 @@
 import { describe, expect, it } from "bun:test";
 
-import { fakeD1, fakeKV, mockExecutionContext } from "@y-core/forge/testing";
+import { attrOf, attrsOf, elementOf, fakeD1, fakeKV, mockExecutionContext, tagOf } from "@y-core/forge/testing";
 
 import { routes } from "../../src/routes";
 import worker, { app } from "../../src/worker";
+import { CONFIG_ENV } from "../env";
 import { sqliteD1 } from "../sqlite-d1";
 
 const MOCK_ASSETS = { fetch: async () => new Response("", { status: 200 }) } as unknown as Fetcher;
@@ -12,18 +13,13 @@ const MOCK_ASSETS_404 = { fetch: async () => new Response("Not Found", { status:
 const MINIMUM_ENV = {
   ASSETS: MOCK_ASSETS,
   SITE_ORIGIN: "https://example.com",
-  CSRF_SECRET: "de7bf4aef360e3a4c3254c9cec7e45d0f1fd98cc2219c62b5b07e826ba1bcc6e",
-  EMAIL_API_KEY: "test-api-key",
-  EMAIL_FROM: "from@example.com",
-  EMAIL_TO: "to@example.com",
-  TURNSTILE_SECRET_KEY: "test-ts-key",
-  TURNSTILE_SITE_KEY: "test-site-key",
-  AUTH_KEY_RING: "9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c3d5e",
-  SESSION_SECRET: "6f2b4a7c0d3e5f7a9b1c3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e",
-  ADMIN_BOOTSTRAP_SECRET: "3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c",
+  ...CONFIG_ENV,
   AUTH_KV: fakeKV(),
   AUTH_DB: fakeD1(),
 } as unknown as Env;
+
+const NOT_FOUND_HEADING =
+  '<h1 data-slot="empty-state-title" class="font-semibold font-serif text-4xl text-balance text-foreground">Page not found</h1>';
 
 describe("the worker module", () => {
   it("exports both entry points", () => {
@@ -108,14 +104,15 @@ describe("GET /", () => {
   it("includes the page title", async () => {
     const res = await app.request("/", {}, MINIMUM_ENV);
     const text = await res.text();
-    // toContain is appropriate here: the full page includes a dynamic nonce, preventing toBe
-    expect(text).toContain("<title>Forge Studio</title>");
+    expect(elementOf(text, "title")).toBe("<title>Forge Studio</title>");
   });
 
   it("includes a JSON-LD script tag", async () => {
     const res = await app.request("/", {}, MINIMUM_ENV);
     const text = await res.text();
-    expect(text).toContain('type="application/ld+json"');
+    const script = tagOf(text, 'type="application/ld+json"');
+    expect(attrOf(script, "nonce")).not.toBe("");
+    expect(script.replace(/ nonce="[^"]*"/, "")).toBe('<script type="application/ld+json">');
   });
 
   it("includes required security headers", async () => {
@@ -128,16 +125,17 @@ describe("GET /", () => {
 
   it("includes the hero section", async () => {
     const res = await app.request("/", {}, MINIMUM_ENV);
-    const text = await res.text();
-    expect(text).toContain('<section id="home"');
-    expect(text).toContain(">Digital Product Studio</p>");
+    const hero = elementOf(await res.text(), "section", 'id="home"');
+    expect(tagOf(hero)).toBe('<section id="home" class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-16 lg:grid-cols-2 lg:px-10 lg:py-24">');
+    expect(elementOf(hero, "p")).toBe('<p class="text-sm font-semibold tracking-eyebrow text-primary uppercase">Digital Product Studio</p>');
   });
 
   it("includes the contact form with hx-post and result target", async () => {
     const res = await app.request("/", {}, MINIMUM_ENV);
     const text = await res.text();
-    expect(text).toContain('hx-post="/api/contact"');
-    expect(text).toContain('<div data-ref="contact-result" id="contact-result"');
+    expect(attrOf(text, "hx-post", 'data-ref="contact-form"')).toBe("/api/contact");
+    expect(attrOf(text, "hx-target", 'data-ref="contact-form"')).toBe("#contact-result");
+    expect(attrsOf(text, 'id="contact-result"')).toEqual({ "data-ref": "contact-result", id: "contact-result", "aria-live": "polite" });
   });
 });
 
@@ -150,14 +148,14 @@ describe("GET /* (404 catch-all)", () => {
   it("renders the 'Page not found' heading", async () => {
     const res = await app.request("/unknown-page", {}, { ...MINIMUM_ENV, ASSETS: MOCK_ASSETS_404 });
     const text = await res.text();
-    expect(text).toContain(">Page not found</h1>");
+    expect(elementOf(text, "h1")).toBe(NOT_FOUND_HEADING);
   });
 
   it("includes a 'Return home' link pointing to /", async () => {
     const res = await app.request("/unknown-page", {}, { ...MINIMUM_ENV, ASSETS: MOCK_ASSETS_404 });
-    const text = await res.text();
-    expect(text).toContain('href="/"');
-    expect(text).toContain(">Return home");
+    const link = elementOf(await res.text(), "a", 'data-slot="button"');
+    expect(attrOf(link, "href")).toBe("/");
+    expect(link.endsWith(">Return home</a>")).toBe(true);
   });
 
   it("includes required security headers on the 404 response", async () => {
@@ -171,13 +169,13 @@ describe("GET /* (404 catch-all)", () => {
   it("renders the same page when the ASSETS binding is absent", async () => {
     const res = await app.request("/unknown-page", {}, { ...MINIMUM_ENV, ASSETS: undefined } as unknown as Env);
     expect(res.status).toBe(404);
-    expect(await res.text()).toContain(">Page not found</h1>");
+    expect(elementOf(await res.text(), "h1")).toBe(NOT_FOUND_HEADING);
   });
 
   it("renders the same page for a non-GET unmatched URL", async () => {
     const res = await app.request("/unknown-page", { method: "PUT" }, { ...MINIMUM_ENV, ASSETS: MOCK_ASSETS_404 });
     expect(res.status).toBe(404);
-    expect(await res.text()).toContain(">Page not found</h1>");
+    expect(elementOf(await res.text(), "h1")).toBe(NOT_FOUND_HEADING);
   });
 
   it("never echoes the request path", async () => {

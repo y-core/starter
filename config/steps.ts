@@ -10,6 +10,7 @@ import { wardenAppSteps } from "@y-core/forge/warden/steps";
 
 import pkg from "../package.json" with { type: "json" };
 import { ACCEPTED } from "./contrast";
+import MARKDOWN from "./markdown";
 import { GOLDEN, NEGATIVE } from "./warden";
 
 /** This repository's root, derived from this file rather than from `process.cwd()`. */
@@ -73,6 +74,8 @@ export const STEPS: readonly Step[] = [
     // `design.sources` stays defaulted to `["src/"]`: the top-level `sources` above names `tests/`,
     // whose specs hold deliberately self-conflicting class literals `validate-class-order` would fail.
     design: { stylesheet: "src/assets/tailwind.css", cssDir: "src/assets" },
+    // `.oxfmtrc.json` ignores `**/*.md`, so this row is the only thing holding prose to a layout.
+    markdown: MARKDOWN,
     // No `jsx`: the row demands a per-file pragma pair, which duplicates the `jsxImportSource` this
     // app's own `tsconfig.json` already states once for the whole tree.
   }),

@@ -4,46 +4,16 @@ import { bindingSetSchema, getAppContext, type Middleware } from "@y-core/forge/
 import type { DevAllowance } from "@y-core/forge/dev";
 import { csrfProtection, importCsrfKey } from "@y-core/forge/form";
 import { isHxRequest } from "@y-core/forge/html/htmx";
-import { consoleChannel, kvLogChannel, type LogRecord, withRedaction } from "@y-core/forge/logging";
+import { consoleChannel, kvLogChannel } from "@y-core/forge/logging";
 import { cors, originProtection, rateLimit, requestIdCtx, type SecurityHeadersOptions } from "@y-core/forge/security";
 import { sessionCtx } from "@y-core/forge/session";
 import { schemaHealthMonitor } from "@y-core/forge/storage/db";
 
 import { routes } from "../routes";
 import { authEnrolmentOptions, authGuardGroups, authIdentityOptions, authSessionGuard } from "./auth";
-import { configStore, originPolicy } from "./config";
-import { devAllowanceCtx } from "./context";
+import { authLimitPolicy, configStore, originPolicy } from "./config";
+import { devAllowanceCtx } from "./dev";
 import type { AppConfig, AppEnv } from "./types";
-
-/** Field names whose value never reaches the KV log store, whatever a call site passes. */
-const PERSISTED_DENY = [
-  "email",
-  "name",
-  "displayName",
-  "userName",
-  "phone",
-  "message",
-  // A provider error body routinely echoes the recipient address back.
-  "body",
-  "token",
-  "password",
-  "secret",
-  "cookie",
-  "authorization",
-];
-
-/** Strips the PII fields and the stack from a record on its way to KV, which outlives a console line by months (`BOUNDARIES.md` §4a). */
-function redactPersisted(record: LogRecord): LogRecord {
-  if (!record.data) return record;
-  const data: Record<string, unknown> = { ...record.data };
-  for (const field of PERSISTED_DENY) if (field in data) data[field] = "[redacted]";
-  const { error } = data;
-  if (error !== null && typeof error === "object" && "stack" in error) {
-    const { stack: _stack, ...rest } = error as Record<string, unknown>;
-    data["error"] = rest;
-  }
-  return { ...record, data };
-}
 
 /** Refuses a mutation that did not come from htmx, whose fragment responses are unusable to any other client. */
 export const htmxOnlyGuard: Middleware = (context, next) => {
@@ -111,7 +81,9 @@ export function registerMiddleware(app: Forge<AppEnv>, security: SecurityHeaders
     // distrust because the same code behind a bare proxy would let a caller forge them.
     trustCfHeaders: true,
     logging: {
-      channels: (c) => (c.env.LOGS_KV ? [consoleChannel(), withRedaction(kvLogChannel(c.env.LOGS_KV), redactPersisted)] : [consoleChannel()]),
+      // No `redact`: the contact form's three uncovered fields never reach a record, because the
+      // handler logs a status or a thrown value and never a submitted field.
+      channels: (c) => (c.env.LOGS_KV ? [consoleChannel(), kvLogChannel(c.env.LOGS_KV)] : [consoleChannel()]),
       bindings: (c) => ({ requestId: requestIdCtx.getOptional(c) }),
     },
     securityHeaders: security,
@@ -137,6 +109,9 @@ export function registerMiddleware(app: Forge<AppEnv>, security: SecurityHeaders
       ...authGuardGroups(dev),
       // This app's own signed-in landing page, outside forge's account group but owing its guards.
       { paths: [routes.account.href()], guards: [...accountGuards] },
+      // App-owned, so outside `authGuardGroups`, and on the same unkeyed budget as the /auth POSTs: a
+      // token grind costs a D1 read and a nonce consume per hit. No `origin` — a GET is exempt from it.
+      { paths: [routes.authEmailConfirm.href()], rateLimit: authLimitPolicy(dev) },
     ],
   });
 }

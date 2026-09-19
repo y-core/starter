@@ -2,7 +2,10 @@
   "send_metrics": false,
   "name": "forge-starter",
   "main": "src/worker.ts",
-  "compatibility_date": "2026-05-14",
+  "compatibility_date": "2026-09-21",
+  // The date above turns `nodejs_compat` on by default, which is what makes the `no_*` pair load-bearing:
+  // a forge app runs the pure Workers/V8 surface. `new_module_registry` is taken for module semantics.
+  "compatibility_flags": ["no_nodejs_compat", "no_nodejs_compat_v2", "new_module_registry"],
   // Stated here rather than passed to one command, because a bundle setting that differs between the
   // path a deployment takes and the path a local production run takes means the production run is
   // not running the production code. `wrangler deploy` does not minify by default; `dev` opts out
@@ -11,6 +14,10 @@
   // Stated, not defaulted: this is a template nobody routes publicly, so a fork opts into exposure
   // deliberately rather than inheriting a `workers.dev` subdomain from an omitted key.
   "workers_dev": false,
+  // Plain-text vars, not secrets: the envelope sender and the one address a submission is delivered
+  // to. `EMAIL_FROM`'s domain is what MailChannels checks for Domain Lockdown, so it must stay a
+  // domain the deployment controls even while `EMAIL_TO` points elsewhere.
+  "vars": { "EMAIL_FROM": "hello@yourdomain.com", "EMAIL_TO": "hello@yourdomain.com" },
   "preview_urls": false,
   "routes": [],
   "dev": {
@@ -19,8 +26,8 @@
     "local_protocol": "https"
   },
   // Stated rather than defaulted: a deployment with no block takes whatever the account default is,
-  // and that default has changed. What reaches here is the console channel; the KV channel is the
-  // one carrying `redactPersisted` (`src/app/middleware.ts`).
+  // and that default has changed. What reaches here is the console channel, redacted by the same
+  // logger-wide policy as the KV one — forge applies it before either channel sees a record.
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1

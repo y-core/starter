@@ -6,17 +6,12 @@ import { showcasePaths } from "@y-core/forge/ui/show";
 
 import { routes } from "../../src/routes";
 import { app } from "../../src/worker";
+import { CONFIG_ENV } from "../env";
 
 const MINIMUM_ENV = {
   ASSETS: { fetch: async () => new Response("", { status: 200 }) },
   SITE_ORIGIN: "https://example.com",
-  CSRF_SECRET: "a".repeat(64),
-  EMAIL_API_KEY: "test-api-key",
-  TURNSTILE_SECRET_KEY: "test-turnstile-secret",
-  TURNSTILE_SITE_KEY: "test-turnstile-site-key",
-  AUTH_KEY_RING: "9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c3d5e",
-  SESSION_SECRET: "6f2b4a7c0d3e5f7a9b1c3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e",
-  ADMIN_BOOTSTRAP_SECRET: "3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c",
+  ...CONFIG_ENV,
   AUTH_KV: fakeKV(),
   AUTH_DB: fakeD1(),
 } as unknown as Env;

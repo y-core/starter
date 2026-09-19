@@ -35,8 +35,8 @@ export async function sendContactEmail(submission: ContactSubmission, email: Ema
 
   if (!res.ok) {
     const text = await res.text().catch(() => "(unreadable)");
-    // Structurally, never interpolated: a rejection routinely echoes `reply_to` back, and the KV
-    // redaction inspects `record.data` alone (`BOUNDARIES.md` §4b).
+    // Structurally, never interpolated: a rejection routinely echoes `reply_to` back, and redaction
+    // inspects `record.data` alone — an address inside the message string is unreachable (§4b).
     logger.error("Email API error", { status: res.status, body: text });
     return { ok: false, reason: `http-${res.status}` };
   }

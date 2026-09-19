@@ -18,7 +18,7 @@ its own: every ruling is in the canon, or in a comment at the code it governs.
 devctl up starter
 ```
 
-Then browse **https://starter.devbox.test:8443**. The same URL works from inside the container, so
+Then browse **<https://starter.devbox.test:8443>**. The same URL works from inside the container, so
 a link you paste from a terminal is the link you open in a browser.
 
 Registration is auto-detected from the `dev` block in `wrangler.jsonc` — already
@@ -34,13 +34,13 @@ cp .dev.vars.example .dev.vars   # then edit CSRF_SECRET
 bun run dev
 ```
 
-Browse **https://localhost:8787** and accept the self-signed certificate.
+Browse **<https://localhost:8787>** and accept the self-signed certificate.
 
 Wrangler serves dev over https, so `SITE_ORIGIN` must name the origin the browser actually uses.
 `.dev.vars` ships the canonical devbox origin, so for the proxy-less path set the override it
 documents:
 
-```
+```ini
 SITE_ORIGIN=https://localhost:8787
 ```
 
@@ -65,17 +65,17 @@ hand, `bun run dev:browser` starts that server with the same port, bind address 
 
 ## Layout
 
-| Path             | Contents                                                             |
-| ---------------- | -------------------------------------------------------------------- |
-| `src/`           | routes, controllers, middleware, SSR views, CSP — never ships to the browser |
-| `src/model/`     | typed page and site content shapes                                   |
-| `src/services/`  | external integrations, reached only from a controller                |
-| `src/client/`    | HTMX wiring and mounted scopes — the only code that runs in the browser |
-| `tests/unit/`    | a module in isolation                                                |
-| `tests/seam/`    | driven through the composition root                                  |
-| `tests/workerd/` | under a real wrangler process                                        |
-| `tests/browser/` | under a real browser                                                 |
-| `config/`        | build-time config: the gate's step table, the asset pipeline, the database, the retrieval set |
+| Path | Contents |
+| --- | --- |
+| `src/` | routes, controllers, middleware, SSR views, CSP — never ships to the browser |
+| `src/model/` | typed page and site content shapes |
+| `src/services/` | external integrations, reached only from a controller |
+| `src/client/` | HTMX wiring and mounted scopes — the only code that runs in the browser |
+| `tests/unit/` | a module in isolation |
+| `tests/seam/` | driven through the composition root |
+| `tests/workerd/` | under a real wrangler process |
+| `tests/browser/` | under a real browser |
+| `config/` | build-time config: the gate's step table, the asset pipeline, the database, the retrieval set |
 
 `src/worker.ts` is the composition root and the production entry. `src/worker.dev.ts` layers the
 Wrangler live-reload script hash onto that CSP, so the reload hash cannot reach production by

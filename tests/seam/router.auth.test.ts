@@ -2,20 +2,18 @@ import { describe, expect, it } from "bun:test";
 
 import { AUTH_SESSION_MAX_MS, createEmailChangeFlow, createNonceStore, createUserStore, importAuthKeyRing } from "@y-core/forge/auth";
 import { AUTH_PENDING_SIGNIN_SESSION_KEY, AUTH_SESSION_KEY, AUTH_SIGNED_IN_SESSION_KEY, AUTH_STEP_UP_SESSION_KEY } from "@y-core/forge/auth/web";
+import { devAllowance } from "@y-core/forge/dev";
 import { ok } from "@y-core/forge/result";
 import { createKVSessionStorage, createSignedCookie } from "@y-core/forge/session";
 import { createD1Client } from "@y-core/forge/storage/db";
-import { fakeAuthD1, fakeKV, mintTestCsrfToken } from "@y-core/forge/testing";
+import { attrOf, attrsOf, collectExecutionContext, elementOf, fakeAuthD1, fakeKV, innerOf, mintTestCsrfToken } from "@y-core/forge/testing";
 
+import { securityHeaders } from "../../src/app/config";
 import type { StepUpFactor } from "../../src/app/types";
 import { routes } from "../../src/routes";
-import { app } from "../../src/worker";
+import { app, createWorker } from "../../src/worker";
+import { ADMIN_BOOTSTRAP_SECRET, AUTH_KEY_RING, CONFIG_ENV, CSRF_SECRET, SESSION_SECRET } from "../env";
 import { sqliteD1 } from "../sqlite-d1";
-
-const CSRF_SECRET = "de7bf4aef360e3a4c3254c9cec7e45d0f1fd98cc2219c62b5b07e826ba1bcc6e";
-const SESSION_SECRET = "6f2b4a7c0d3e5f7a9b1c3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e";
-const AUTH_KEY_RING = "9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c3d5e";
-const ADMIN_BOOTSTRAP_SECRET = "3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c";
 
 const USER_ID = "01890a5d-ac96-774b-bcce-b302099a8057";
 const USER_EMAIL = "ada@example.com";
@@ -31,7 +29,9 @@ const CEREMONY_REFUSED = '{"error":"The passkey was not accepted."}';
 const NOTHING_OWED = '{"error":"This account owes no factor enrolment."}';
 const STEP_UP_OWED = '{"error":"This account owes a step-up verification."}';
 
-const CONFIRMED = "Your email address has been changed.";
+const MOVED = "Your email address has been changed. Sign in again to continue.";
+const FORWARDED = `Check ${NEW_EMAIL} for the last link, and open it to finish the change.`;
+const UNAVAILABLE = "Something went wrong on our side. Try the link again in a few minutes.";
 const REFUSED = "That confirmation link is no longer valid. Request the change again from your account.";
 
 /** Every lowercase discriminant of `AuthSigninReason`, `AuthEmailChangeReason` and `AuthStoreError` a body must never echo. */
@@ -67,7 +67,10 @@ interface AuthState {
   admin?: boolean;
   /** The address the account is held under, so a case can measure how the page escapes it. */
   email?: string;
-  emailVerifiedAt?: number;
+  /** `null` is an account that never answered a link, which is what turns an email change into one stage rather than two. */
+  emailVerifiedAt?: number | null;
+  /** The statement the database refuses, for the cases about what a page does when the store is down. */
+  failOn?: (sql: string) => Error | null;
   createdAt?: number;
   /** The second factors this account holds, confirmed. Absent is an account that enrolled none. */
   factors?: readonly StepUpFactor[];
@@ -80,29 +83,24 @@ const SETTLED: readonly StepUpFactor[] = ["totp-app", "passkey"];
 
 function authEnv(state: AuthState = {}) {
   const kv = fakeKV();
-  const db = fakeAuthD1([
-    {
-      id: USER_ID,
-      email: state.email ?? USER_EMAIL,
-      ...(state.emailVerifiedAt === undefined ? {} : { emailVerifiedAt: state.emailVerifiedAt }),
-      ...(state.createdAt === undefined ? {} : { createdAt: state.createdAt }),
-      isAdmin: state.admin === true,
-      sessionsInvalidBefore: state.sessionsInvalidBefore ?? null,
-      factors: (state.factors ?? []).map((kind) => ({ kind })),
-    },
-  ]);
+  const db = fakeAuthD1(
+    [
+      {
+        id: USER_ID,
+        email: state.email ?? USER_EMAIL,
+        ...(state.emailVerifiedAt === undefined ? {} : { emailVerifiedAt: state.emailVerifiedAt }),
+        ...(state.createdAt === undefined ? {} : { createdAt: state.createdAt }),
+        isAdmin: state.admin === true,
+        sessionsInvalidBefore: state.sessionsInvalidBefore ?? null,
+        factors: (state.factors ?? []).map((kind) => ({ kind })),
+      },
+    ],
+    state.failOn === undefined ? {} : { failOn: state.failOn },
+  );
   const env = {
     ASSETS: MOCK_ASSETS,
     SITE_ORIGIN,
-    CSRF_SECRET,
-    EMAIL_API_KEY: "test-api-key",
-    EMAIL_FROM: "from@example.com",
-    EMAIL_TO: "to@example.com",
-    TURNSTILE_SECRET_KEY: "test-ts-key",
-    TURNSTILE_SITE_KEY: "test-site-key",
-    AUTH_KEY_RING,
-    SESSION_SECRET,
-    ADMIN_BOOTSTRAP_SECRET,
+    ...CONFIG_ENV,
     AUTH_KV: kv,
     AUTH_DB: db,
     // Present because an absent binding is a 503 rather than a skipped guard; the case that judges
@@ -115,13 +113,13 @@ function authEnv(state: AuthState = {}) {
 // `claimFirstAdmin` puts its whole guard inside the writing statement — `WHERE id = ? AND <no admin
 // yet>` — which `fakeAuthD1`, reporting nothing written, can only ever refuse.
 /** The env of a settled, non-admin account on a real SQLite database carrying this app's migration. */
-async function claimEnv() {
+async function claimEnv(verified = true) {
   const db = sqliteD1();
   const hex = USER_ID.replaceAll("-", "");
   const now = Date.now();
   await db.exec(
     `INSERT INTO auth_users (id, email, email_key, email_verified_at, is_admin, created_at, updated_at)
-     VALUES (unhex('${hex}'), '${USER_EMAIL}', '${USER_EMAIL}', ${now}, 0, ${now}, ${now})`,
+     VALUES (unhex('${hex}'), '${USER_EMAIL}', '${USER_EMAIL}', ${verified ? now : "NULL"}, 0, ${now}, ${now})`,
   );
   for (const [index, kind] of SETTLED.entries()) {
     await db.exec(
@@ -164,27 +162,21 @@ function signedIn(kv: ReturnType<typeof fakeKV>, steppedUp = false, signedInAt =
 }
 
 function headingOf(html: string): string {
-  return /<h1[^>]*>[^<]*<\/h1>/.exec(html)?.[0] ?? "";
+  return elementOf(html, "h1");
 }
 
 /** The whole `tag` element carrying `data-ref="<ref>"`, children included. */
 function refOf(html: string, tag: string, ref: string): string {
-  return new RegExp(`<${tag}[^>]*\\sdata-ref="${ref}"[^>]*>[\\s\\S]*?</${tag}>`).exec(html)?.[0] ?? "";
+  return elementOf(html, tag, `data-ref="${ref}"`);
 }
 
-/** The inner markup of one element, with its own opening and closing tags removed. */
-function innerOf(element: string): string {
-  return element.replace(/^<[a-z]+[^>]*>/, "").replace(/<\/[a-z]+>$/, "");
-}
-
-/** The value `name` carries on one element's opening tag. */
-function attrOf(element: string, name: string): string {
-  return new RegExp(`\\s${name}="([^"]*)"`).exec(element)?.[1] ?? "";
-}
-
+/** The one paragraph the email-change confirmation page reports its outcome in. */
 function paragraphOf(html: string): string {
-  return /<p class="text-muted-foreground">[^<]*<\/p>/.exec(html)?.[0] ?? "";
+  return elementOf(html, "p", 'class="text-muted-foreground"');
 }
+
+/** The navbar's own attributes, which every page rendered inside this app's chrome carries. */
+const PRIMARY_NAV = { "data-slot": "navbar", id: "primary-nav", "data-navbar-drawer": "" };
 
 // A browser submits every named control the form rendered, not the fields a test remembered to build
 // — so a field a view grows and the action does not accept fails here rather than in production.
@@ -214,7 +206,7 @@ async function post(path: string, env: Env, cookie: string, token: string, body:
 }
 
 /** Mints a real email-change token against the same key ring and nonce store the mounted app reads. */
-async function emailChangeToken(db: ReturnType<typeof fakeAuthD1>): Promise<string> {
+async function emailChangeToken(db: Parameters<typeof createD1Client>[0]): Promise<string> {
   let issued = "";
   const deferred: Promise<unknown>[] = [];
   const flow = createEmailChangeFlow({
@@ -235,6 +227,17 @@ async function emailChangeToken(db: ReturnType<typeof fakeAuthD1>): Promise<stri
   await flow.request(USER_ID, NEW_EMAIL, Date.now());
   await Promise.all(deferred);
   return issued;
+}
+
+/** Opens a confirmation link on `entry`, as a browser behind Cloudflare would: the limiter's key rides on every request. */
+function confirm(entry: typeof app, env: Env, token?: string): Promise<Response> {
+  const query = token === undefined ? "" : `?token=${encodeURIComponent(token)}`;
+  return entry.request(`${routes.authEmailConfirm.href()}${query}`, { headers: CALLER }, env);
+}
+
+/** Refuses every statement touching `table` once `armed()` — after the token is minted, so only the confirmation sees the outage. */
+function storeDown(table: string, armed: () => boolean): (sql: string) => Error | null {
+  return (sql) => (armed() && sql.includes(table) ? new Error("D1 is unreachable") : null);
 }
 
 describe("auth mount", () => {
@@ -504,6 +507,63 @@ describe("authCsrfGuard on the auth prefixes", () => {
   });
 });
 
+// `worker.ts` mints no allowance, so `createConsoleNotifier` is built with the credential half off.
+// Asserted through the entry, because the gate is the wiring rather than the notifier.
+describe("what a sign-in code writes to the console on each entry", () => {
+  async function signinLog(entry: typeof app): Promise<string[]> {
+    // `claimEnv`, not `authEnv`: the OTP state store is D1, and its cooldown upsert is SQL that only
+    // the real SQLite fixture executes — `fakeAuthD1` refuses it, so no code is ever issued.
+    const { env, kv } = await claimEnv();
+    const { cookie, id } = await anonymous(kv);
+    const token = await mintTestCsrfToken(CSRF_SECRET, SIGNIN_PATH, { subject: id });
+    const logged: string[] = [];
+    const savedLog = console.log;
+    console.log = (...args: unknown[]) => logged.push(args.map((arg) => (typeof arg === "string" ? arg : JSON.stringify(arg))).join(" "));
+    // The notifier runs inside the promise `signin.request` hands to `waitUntil`, so an undrained
+    // context asserts against a line that was never written.
+    const { executionCtx, drain } = collectExecutionContext();
+    try {
+      const res = await entry.fetch(
+        new Request(`${SITE_ORIGIN}${SIGNIN_PATH}`, {
+          method: "POST",
+          headers: { ...BROWSER_POST, cookie, "X-CSRF-Token": token },
+          body: new URLSearchParams({ email: USER_EMAIL }),
+        }),
+        env,
+        executionCtx,
+      );
+      expect(res.status).toBe(303);
+      await drain();
+    } finally {
+      console.log = savedLog;
+    }
+    return logged;
+  }
+
+  it("the production entry writes the notifier's line, so the absences below are suppression rather than silence", async () => {
+    const logged = await signinLog(app);
+
+    expect(logged.join("\n")).toContain("auth.notify");
+    expect(logged.join("\n")).toContain("otp");
+  });
+
+  it("the production entry writes neither the address nor the code", async () => {
+    const logged = await signinLog(app);
+    const line = logged.filter((entry) => entry.includes("auth.notify")).join("\n");
+
+    expect(line).not.toContain(USER_EMAIL);
+    expect(line).not.toMatch(/\b\d{6}\b/);
+  });
+
+  it("the development entry writes both, which is the affordance the gate keeps", async () => {
+    const logged = await signinLog(createWorker(securityHeaders, devAllowance({ rateLimitOptional: true })));
+    const line = logged.filter((entry) => entry.includes("auth.notify")).join("\n");
+
+    expect(line).toContain(USER_EMAIL);
+    expect(line).toMatch(/\b\d{6}\b/);
+  });
+});
+
 // The auth group declares no guards of its own, so both policies reach the route through a sibling
 // field — and a group expanded by its middleware list alone carries neither.
 describe("the auth group's origin and rate-limit policies", () => {
@@ -546,7 +606,7 @@ describe("a first-time visitor with no session at all", () => {
 
     expect(cookie).toStartWith("__Host-session=");
 
-    const token = /<input[^>]*data-slot="form-csrf"[^>]*\svalue="([^"]*)"/.exec(html)?.[1] ?? "";
+    const token = attrOf(html, "value", 'data-slot="form-csrf"');
     const res = await post(SIGNUP_PATH, env, cookie, token, formBody(html, { email: UNKNOWN_EMAIL }));
 
     expect(res.status).toBe(303);
@@ -581,42 +641,123 @@ describe("refusal redaction", () => {
       app.request("/account/passkeys", {}, env).then((res) => res.text()),
       app.request("/admin/users", { headers: { cookie } }, env).then((res) => res.text()),
       post(ENROL_FINISH_PATH, env, cookie, token, "{}", "application/json").then((res) => res.text()),
-      app.request("/auth/email-change/confirm?token=not-a-token", {}, env).then((res) => res.text()),
+      confirm(app, env, "not-a-token").then((res) => res.text()),
+      confirm(app, authEnv({ failOn: storeDown("auth_nonces", () => true) }).env, "not-a-token").then((res) => res.text()),
     ]);
     expect(bodies.flatMap((body) => REASON_WORDS.filter((word) => body.includes(word)))).toEqual([]);
   });
 });
 
 describe("GET /auth/email-change/confirm", () => {
-  it("moves the address and reports success for a token issued to it", async () => {
+  // An unverified account gets one link rather than two, and it is the one that moves the row — a
+  // write `fakeAuthD1` reports as changing nothing, so the move runs on the real database.
+  it("moves the address for a move token, and asks for a sign-in the move has revoked", async () => {
+    const { env, db } = await claimEnv(false);
+    const token = await emailChangeToken(db);
+    const res = await confirm(app, env, token);
+    expect(res.status).toBe(200);
+    expect(paragraphOf(await res.text())).toBe(`<p class="text-muted-foreground">${MOVED}</p>`);
+    expect(db.rows<{ email: string }>("SELECT email FROM auth_users").map((row) => row.email)).toEqual([NEW_EMAIL]);
+    db.close();
+  });
+
+  // A verified account's first link only approves; answering it forwards the moving link to the
+  // new address, and the page has to say that one step is left rather than claim the change.
+  it("names the address the last link went to for an approve token, and does not claim the change", async () => {
     const { env, db } = authEnv();
     const token = await emailChangeToken(db);
-    const res = await app.request(`/auth/email-change/confirm?token=${encodeURIComponent(token)}`, {}, env);
+    const res = await confirm(app, env, token);
     expect(res.status).toBe(200);
-    expect(paragraphOf(await res.text())).toBe(`<p class="text-muted-foreground">${CONFIRMED}</p>`);
+    expect(paragraphOf(await res.text())).toBe(`<p class="text-muted-foreground">${FORWARDED}</p>`);
+  });
+
+  // The page names the address on purpose — the holder of this link is the owner who asked for the
+  // change. §4a governs the other half: the same address must reach no channel.
+  it("names the address on the page and on no log line (BOUNDARIES §4a)", async () => {
+    const { env, db } = authEnv();
+    const token = await emailChangeToken(db);
+    const logged: string[] = [];
+    const savedLog = console.log;
+    console.log = (...args: unknown[]) => logged.push(args.map((arg) => (typeof arg === "string" ? arg : JSON.stringify(arg))).join(" "));
+    let body: string;
+    try {
+      body = await (await confirm(app, env, token)).text();
+    } finally {
+      console.log = savedLog;
+    }
+
+    expect(paragraphOf(body)).toBe(`<p class="text-muted-foreground">${FORWARDED}</p>`);
+    expect(logged.join("\n")).not.toContain(NEW_EMAIL);
   });
 
   it("refuses the same token a second time", async () => {
     const { env, db } = authEnv();
     const token = await emailChangeToken(db);
-    await app.request(`/auth/email-change/confirm?token=${encodeURIComponent(token)}`, {}, env);
-    const res = await app.request(`/auth/email-change/confirm?token=${encodeURIComponent(token)}`, {}, env);
+    await confirm(app, env, token);
+    const res = await confirm(app, env, token);
     expect(res.status).toBe(400);
     expect(paragraphOf(await res.text())).toBe(`<p class="text-muted-foreground">${REFUSED}</p>`);
   });
 
   it("refuses a request carrying no token", async () => {
     const { env } = authEnv();
-    const res = await app.request("/auth/email-change/confirm", {}, env);
+    const res = await confirm(app, env);
     expect(res.status).toBe(400);
     expect(paragraphOf(await res.text())).toBe(`<p class="text-muted-foreground">${REFUSED}</p>`);
   });
 
   it("refuses a malformed token without echoing why", async () => {
     const { env } = authEnv();
-    const res = await app.request("/auth/email-change/confirm?token=%20not.a.token%20", {}, env);
+    const res = await confirm(app, env, " not.a.token ");
     expect(res.status).toBe(400);
     expect(paragraphOf(await res.text())).toBe(`<p class="text-muted-foreground">${REFUSED}</p>`);
+  });
+
+  // Two stores can fail under a valid token, and forge reports them differently: the nonce store as
+  // the reason `unavailable`, the user store as an `AuthStoreError`. Neither is the link's fault.
+  it("answers 503 rather than a refusal when the nonce store is down", async () => {
+    let armed = false;
+    const { env, db } = authEnv({ failOn: storeDown("auth_nonces", () => armed) });
+    const token = await emailChangeToken(db);
+    armed = true;
+    const res = await confirm(app, env, token);
+    expect(res.status).toBe(503);
+    expect(paragraphOf(await res.text())).toBe(`<p class="text-muted-foreground">${UNAVAILABLE}</p>`);
+  });
+
+  it("answers 503 rather than a refusal when the user store is down", async () => {
+    let armed = false;
+    const { env, db } = authEnv({ emailVerifiedAt: null, failOn: storeDown("auth_users", () => armed) });
+    const token = await emailChangeToken(db);
+    armed = true;
+    const res = await confirm(app, env, token);
+    expect(res.status).toBe(503);
+    expect(paragraphOf(await res.text())).toBe(`<p class="text-muted-foreground">${UNAVAILABLE}</p>`);
+  });
+});
+
+// The route is app-owned and outside forge's guard groups, so its rate limit is a group of this
+// app's own — and a token grind is what the limit bounds.
+describe("the rate limit on the confirmation route", () => {
+  it("refuses to serve on the production entry when the limiter binding is absent", async () => {
+    const { RATE_LIMITER: _absent, ...env } = authEnv().env as unknown as Record<string, unknown>;
+    const res = await confirm(app, env as unknown as Env, "not-a-token");
+    expect(res.status).toBe(503);
+    expect(await res.text()).toBe("Service unavailable");
+  });
+
+  it("reaches the page on the development entry with the binding absent, which is the allowance's whole grant", async () => {
+    const { RATE_LIMITER: _absent, ...env } = authEnv().env as unknown as Record<string, unknown>;
+    const res = await confirm(createWorker(securityHeaders, devAllowance({ rateLimitOptional: true })), env as unknown as Env, "not-a-token");
+    expect(res.status).toBe(400);
+  });
+
+  it("refuses a visit the limiter has run out of budget for, before the token is read", async () => {
+    const { env } = authEnv();
+    const limited = { ...env, RATE_LIMITER: { limit: async () => ({ success: false }) } } as unknown as Env;
+    const res = await confirm(app, limited, "not-a-token");
+    expect(res.status).toBe(429);
+    expect(await res.text()).toBe("Too many requests. Please try again later.");
   });
 });
 
@@ -630,8 +771,8 @@ describe("GET /welcome — forge's sign-in card on a route this app owns", () =>
 
     expect(res.status).toBe(200);
     expect(headingOf(html)).toBe('<h1 class="font-serif text-3xl font-semibold text-balance">Welcome back</h1>');
-    expect(/<h2[^>]*>[^<]*<\/h2>/.exec(html)?.[0]).toBe('<h2 class="text-xl">Sign in</h2>');
-    expect(html).toInclude('id="primary-nav"');
+    expect(elementOf(html, "h2")).toBe('<h2 class="text-xl">Sign in</h2>');
+    expect(attrsOf(html, 'data-slot="navbar"')).toEqual(PRIMARY_NAV);
   });
 
   // The token an embedded form carries is worth nothing unless the guarded path it posts to accepts
@@ -641,8 +782,8 @@ describe("GET /welcome — forge's sign-in card on a route this app owns", () =>
     const { cookie } = await anonymous(kv);
     const html = await (await app.request("/welcome", { headers: { cookie } }, env)).text();
 
-    expect(/<form[^>]*\saction="([^"]*)"/.exec(html)?.[1]).toBe(SIGNIN_PATH);
-    const token = /<input[^>]*data-slot="form-csrf"[^>]*\svalue="([^"]*)"/.exec(html)?.[1] ?? "";
+    expect(attrOf(elementOf(html, "form"), "action")).toBe(SIGNIN_PATH);
+    const token = attrOf(html, "value", 'data-slot="form-csrf"');
 
     const res = await post(SIGNIN_PATH, env, cookie, token, formBody(html, { email: USER_EMAIL }));
     expect(res.status).toBe(303);
@@ -652,12 +793,13 @@ describe("GET /welcome — forge's sign-in card on a route this app owns", () =>
 
 describe("the email-change confirmation shares the app's own layout", () => {
   it("renders the app's chrome around the outcome it reports", async () => {
-    const { env, db } = authEnv();
+    const { env, db } = await claimEnv(false);
     const token = await emailChangeToken(db);
-    const html = await (await app.request(`/auth/email-change/confirm?token=${encodeURIComponent(token)}`, {}, env)).text();
+    const html = await (await confirm(app, env, token)).text();
+    db.close();
 
-    expect(paragraphOf(html)).toBe(`<p class="text-muted-foreground">${CONFIRMED}</p>`);
-    expect(html).toInclude('id="primary-nav"');
+    expect(paragraphOf(html)).toBe(`<p class="text-muted-foreground">${MOVED}</p>`);
+    expect(attrsOf(html, 'data-slot="navbar"')).toEqual(PRIMARY_NAV);
   });
 });
 
@@ -694,21 +836,21 @@ describe("the account page this app owns", () => {
   it("dates the account from what the store holds rather than from when the page was rendered", async () => {
     const { html } = await accountPage({ createdAt: Date.UTC(2021, 4, 17) });
 
-    const time = /<time[^>]*>([^<]*)<\/time>/.exec(html);
-    expect(attrOf(time?.[0] ?? "", "datetime")).toBe("2021-05-17T00:00:00.000Z");
-    expect(time?.[1]).toBe("2021-05-17");
+    const time = elementOf(html, "time");
+    expect(attrOf(time, "datetime")).toBe("2021-05-17T00:00:00.000Z");
+    expect(innerOf(time)).toBe("2021-05-17");
   });
 
   it("keeps the page out of every cache and out of every search index, which a signed-in page owes", async () => {
     const { res, html } = await accountPage();
 
     expect(res.headers.get("cache-control")).toBe("no-store");
-    expect(html).toInclude('<meta name="robots" content="noindex">');
+    expect(elementOf(html, "meta", 'name="robots"')).toBe('<meta name="robots" content="noindex">');
   });
 
   it("mints a sign-out token the sign-out path accepts, rather than borrowing the page's own", async () => {
     const { html, env, cookie } = await accountPage();
-    const token = attrOf(/<input[^>]*name="_csrf"[^>]*>/.exec(html)?.[0] ?? "", "value");
+    const token = attrOf(html, "value", 'name="_csrf"');
 
     const res = await post("/auth/signout", env, cookie, token, new URLSearchParams({ _csrf: token }));
     expect(res.status).not.toBe(403);
@@ -716,7 +858,7 @@ describe("the account page this app owns", () => {
 
   it("refuses that same token at another path, which is what makes minting it per path load-bearing", async () => {
     const { html, env, cookie } = await accountPage();
-    const token = attrOf(/<input[^>]*name="_csrf"[^>]*>/.exec(html)?.[0] ?? "", "value");
+    const token = attrOf(html, "value", 'name="_csrf"');
 
     const res = await post(ENROL_FINISH_PATH, env, cookie, token, "{}", "application/json");
     expect(res.status).toBe(403);

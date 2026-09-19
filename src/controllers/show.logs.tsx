@@ -5,7 +5,7 @@ import { definePage } from "@y-core/forge/app";
 import { kvLogChannel } from "@y-core/forge/logging";
 import { loadLogViewer } from "@y-core/forge/logging/show";
 
-import { devAllowanceCtx } from "../app/context";
+import { devAllowanceCtx } from "../app/dev";
 import type { AppConfig, AppEnv } from "../app/types";
 import { routes } from "../routes";
 

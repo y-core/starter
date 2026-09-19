@@ -5,7 +5,7 @@ import { createMiddleware } from "@y-core/forge/router";
 import { requireFormContentType } from "@y-core/forge/security";
 import { formMultilineText, formText, v } from "@y-core/forge/validation";
 
-import { devAllowanceCtx } from "../../app/context";
+import { devAllowanceCtx } from "../../app/dev";
 import { csrfVerifyGuard, htmxOnlyGuard, originGuard, rateLimitGuard } from "../../app/middleware";
 import type { AppConfig, AppEnv } from "../../app/types";
 import { sendContactEmail } from "../../services/email";
@@ -75,10 +75,9 @@ export const contactAction = defineAction<typeof ContactSchema, AppEnv, AppConfi
   handle: async (data, c, config) => {
     const log = requestLog.get(c);
     const sent = await sendContactEmail(data, config.services.email, log);
-    if (!sent.ok) {
-      log.error("Email delivery failed", { reason: sent.reason });
-      return fragmentResponse(renderError("Something went wrong. Please try again or contact us directly."), 500);
-    }
+    // No second record here: `sendContactEmail` logs each failure with the status or the thrown
+    // value, and `reason` is derived from those — a line carrying it would say strictly less.
+    if (!sent.ok) return fragmentResponse(renderError("Something went wrong. Please try again or contact us directly."), 500);
     log.info("Contact form submitted");
     return fragmentResponse(renderSuccess(SUCCESS_MESSAGE));
   },

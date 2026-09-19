@@ -17,5 +17,5 @@
   "sortPackageJson": false,
   "sortImports": true,
   "sortTailwindcss": { "functions": ["cn", "cva"], "stylesheet": "src/assets/tailwind.css" },
-  "ignorePatterns": ["**/*.snapshot.json", ".claude", ".forge/**", ".types/**", "public/**", "test-results/**", "playwright-report/**"]
+  "ignorePatterns": ["**/*.md", "**/*.snapshot.json", ".claude", ".forge/**", ".types/**", "public/**", "test-results/**", "playwright-report/**"]
 }

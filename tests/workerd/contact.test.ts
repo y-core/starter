@@ -6,18 +6,13 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
 import { type DevServer, startDevServer } from "@y-core/forge/testing/workerd";
 
+import { CONFIG_ENV } from "../env";
+
 const ENTRY = "src/worker.dev.ts";
 
-// The testing keys, whose fixed siteverify hostname only the dev entry's allowance makes acceptable.
-const VARS = {
-  CSRF_SECRET: "de7bf4aef360e3a4c3254c9cec7e45d0f1fd98cc2219c62b5b07e826ba1bcc6e",
-  EMAIL_API_KEY: "test-api-key",
-  TURNSTILE_SECRET_KEY: "1x0000000000000000000000000000000AA",
-  TURNSTILE_SITE_KEY: "1x00000000000000000000AA",
-  AUTH_KEY_RING: "9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c3d5e",
-  SESSION_SECRET: "6f2b4a7c0d3e5f7a9b1c3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e",
-  ADMIN_BOOTSTRAP_SECRET: "3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c",
-};
+// The testing keys, whose fixed siteverify hostname only the dev entry's allowance makes acceptable
+// — the one thing this suite overrides, because the seam fixtures never reach the real siteverify.
+const VARS = { ...CONFIG_ENV, TURNSTILE_SECRET_KEY: "1x0000000000000000000000000000000AA", TURNSTILE_SITE_KEY: "1x00000000000000000000AA" };
 
 const VALID = {
   name: "Jane Example",

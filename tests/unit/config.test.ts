@@ -1,17 +1,9 @@
 import { describe, expect, it } from "bun:test";
 
 import { configStore, SITE_ORIGIN } from "../../src/app/config";
+import { CONFIG_ENV } from "../env";
 
-const COMPLETE_ENV = {
-  SITE_ORIGIN: "https://example.com",
-  CSRF_SECRET: "de7bf4aef360e3a4c3254c9cec7e45d0f1fd98cc2219c62b5b07e826ba1bcc6e",
-  EMAIL_API_KEY: "test-api-key",
-  TURNSTILE_SECRET_KEY: "test-ts-key",
-  TURNSTILE_SITE_KEY: "test-site-key",
-  AUTH_KEY_RING: "9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c3d5e",
-  SESSION_SECRET: "6f2b4a7c0d3e5f7a9b1c3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e",
-  ADMIN_BOOTSTRAP_SECRET: "3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c",
-};
+const COMPLETE_ENV = { SITE_ORIGIN: "https://example.com", ...CONFIG_ENV };
 
 function envWithout(key: keyof typeof COMPLETE_ENV): Record<string, unknown> {
   const { [key]: _dropped, ...rest } = COMPLETE_ENV;
@@ -39,6 +31,22 @@ describe("configStore — SITE_ORIGIN falls through to the literal", () => {
     // The origin gained a default; nothing else did. `CSRF_SECRET` remains fail-closed, which is
     // what keeps a dev server from booting without `.dev.vars`.
     expect(() => configStore.get(envWithout("CSRF_SECRET"))).toThrow();
+  });
+});
+
+describe("configStore — the delivery addresses", () => {
+  it("carries the envelope sender and the recipient the environment names", () => {
+    const config = configStore.get({ ...COMPLETE_ENV });
+    expect(config.services.email.from).toBe("from@example.com");
+    expect(config.services.email.to).toBe("to@example.com");
+  });
+
+  it("refuses a missing recipient rather than defaulting one", () => {
+    expect(() => configStore.get(envWithout("EMAIL_TO"))).toThrow();
+  });
+
+  it("refuses an empty sender, which a bare `EMAIL_FROM=` line supplies", () => {
+    expect(() => configStore.get({ ...COMPLETE_ENV, EMAIL_FROM: "" })).toThrow();
   });
 });
 

@@ -1,10 +1,8 @@
 import { devAllowance } from "@y-core/forge/dev";
 import { mergeSecurityHeaders } from "@y-core/forge/security";
 
-import { purgeAuthStores } from "./app/auth";
 import { securityHeaders } from "./app/config";
-import type { AppEnv } from "./app/types";
-import { createWorker } from "./worker";
+import { createWorker, createWorkerModule } from "./worker";
 
 // Deterministic per Wrangler version, so it drifts only on a major upgrade: regenerate it from the
 // browser console's CSP violation report, which suggests the `sha256-…` to paste here.
@@ -16,11 +14,6 @@ export const devApp = createWorker(
   devAllowance({ turnstileTestingSecrets: true, rateLimitOptional: true, errorDetail: true }),
 );
 
-// The same two-entry module the production worker exports, so dev and production stay structurally
-// identical and the cron is exercised by the entry development actually runs.
-export default {
-  fetch: (request: Request, env: AppEnv, ctx: ExecutionContext) => devApp.fetch(request, env, ctx),
-  scheduled: async (_event: ScheduledController, env: AppEnv, _ctx: ExecutionContext) => {
-    await purgeAuthStores(env);
-  },
-};
+// The production worker's own wrapper rather than a copy of it, so dev and production cannot drift
+// apart and the cron is exercised by the entry development actually runs.
+export default createWorkerModule(devApp);

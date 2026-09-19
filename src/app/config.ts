@@ -1,4 +1,4 @@
-import { createConfig, env } from "@y-core/forge/config";
+import { createConfig, env, requiredGroup } from "@y-core/forge/config";
 import type { DevAllowance } from "@y-core/forge/dev";
 import { CsrfConfigSchema } from "@y-core/forge/form";
 import type { OriginProtectionOptions, RateLimitOptions, SecurityHeadersOptions } from "@y-core/forge/security";
@@ -6,8 +6,6 @@ import { BaseUrlConfigSchema, NONCE, TURNSTILE_CSP } from "@y-core/forge/securit
 import { v } from "@y-core/forge/validation";
 
 import type { StepUpFactor } from "./types";
-
-const CONFIG = { EMAIL_FROM: "hello@yourdomain.com", EMAIL_TO: "hello@yourdomain.com" };
 
 /** The canonical production origin, and the fallback when the environment's `SITE_ORIGIN` is unset. */
 export const SITE_ORIGIN = "https://forge-starter.workers.dev";
@@ -57,13 +55,9 @@ export const AppConfigSchema = v.object({
     rpName: v.optional(v.string(), "Forge Studio"),
   }),
   services: v.object({
-    email: v.object({
-      apiKey: v.string(),
-      apiUrl: v.string(),
-      from: v.optional(v.string(), CONFIG.EMAIL_FROM),
-      senderName: v.string(),
-      to: v.optional(v.string(), CONFIG.EMAIL_TO),
-    }),
+    // `requiredGroup`, not `v.object`: an `EMAIL_TO=` line arrives as `""`, which `v.string()` takes
+    // and the mail service then fails on. No defaults — a placeholder that parses mails into the void.
+    email: requiredGroup({ apiKey: v.string(), apiUrl: v.string(), from: v.string(), senderName: v.string(), to: v.string() }),
     turnstile: v.object({ secretKey: v.string(), siteKey: v.string() }),
   }),
 });
@@ -78,7 +72,13 @@ export const appConfig = {
     rpName: "Forge Studio",
   },
   services: {
-    email: { apiKey: env("EMAIL_API_KEY"), apiUrl: "https://api.mailchannels.net/tx/v1/send", senderName: "Forge Studio" },
+    email: {
+      apiKey: env("EMAIL_API_KEY"),
+      apiUrl: "https://api.mailchannels.net/tx/v1/send",
+      from: env("EMAIL_FROM"),
+      senderName: "Forge Studio",
+      to: env("EMAIL_TO"),
+    },
     turnstile: { secretKey: env("TURNSTILE_SECRET_KEY"), siteKey: env("TURNSTILE_SITE_KEY") },
   },
 };

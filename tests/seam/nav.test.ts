@@ -2,10 +2,11 @@ import { describe, expect, it } from "bun:test";
 
 import { AUTH_PENDING_SIGNIN_SESSION_KEY, AUTH_SESSION_KEY, AUTH_SIGNED_IN_SESSION_KEY } from "@y-core/forge/auth/web";
 import { createKVSessionStorage, createSignedCookie } from "@y-core/forge/session";
-import { fakeAuthD1, fakeKV } from "@y-core/forge/testing";
+import { attrOf, attrsOf, fakeAuthD1, fakeKV, tagOf } from "@y-core/forge/testing";
 
 import { resolveNavHref } from "../../src/views/nav";
 import { app } from "../../src/worker";
+import { CONFIG_ENV, SESSION_SECRET } from "../env";
 
 describe("resolveNavHref", () => {
   const cases: Array<[string, string, string]> = [
@@ -27,11 +28,6 @@ describe("resolveNavHref", () => {
   }
 });
 
-const CSRF_SECRET = "de7bf4aef360e3a4c3254c9cec7e45d0f1fd98cc2219c62b5b07e826ba1bcc6e";
-const SESSION_SECRET = "6f2b4a7c0d3e5f7a9b1c3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e";
-const ADMIN_BOOTSTRAP_SECRET = "3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c";
-const AUTH_KEY_RING = "9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c3d5e";
-
 const USER_ID = "01890a5d-ac96-774b-bcce-b302099a8057";
 const USER_EMAIL = "ada@example.com";
 
@@ -40,21 +36,7 @@ const MOCK_ASSETS = { fetch: async () => new Response("Not Found", { status: 404
 function navEnv(admin = false) {
   const kv = fakeKV();
   const db = fakeAuthD1([{ id: USER_ID, email: USER_EMAIL, isAdmin: admin, sessionsInvalidBefore: null, factors: [] }]);
-  const env = {
-    ASSETS: MOCK_ASSETS,
-    SITE_ORIGIN: "https://example.com",
-    CSRF_SECRET,
-    EMAIL_API_KEY: "test-api-key",
-    EMAIL_FROM: "from@example.com",
-    EMAIL_TO: "to@example.com",
-    TURNSTILE_SECRET_KEY: "test-ts-key",
-    TURNSTILE_SITE_KEY: "test-site-key",
-    AUTH_KEY_RING,
-    SESSION_SECRET,
-    ADMIN_BOOTSTRAP_SECRET,
-    AUTH_KV: kv,
-    AUTH_DB: db,
-  } as unknown as Env;
+  const env = { ASSETS: MOCK_ASSETS, SITE_ORIGIN: "https://example.com", ...CONFIG_ENV, AUTH_KV: kv, AUTH_DB: db } as unknown as Env;
   return { env, kv };
 }
 
@@ -90,24 +72,19 @@ async function homeFor(cookie?: string, admin = false): Promise<string> {
 // re-applies it from the same tokens on the client, so the item is in the markup either way.
 /** Whether the nav item pointing at `href` is hidden from this render's viewer. */
 function itemHidden(html: string, href: string): boolean {
-  const tag = new RegExp(`<a[^>]*\\shref="${href.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"[^>]*>`).exec(html)?.[0] ?? "";
+  const tag = tagOf(html, `href="${href}"`);
   if (tag === "") throw new Error(`nav item for ${href} is not in the rendered page at all`);
-  return /\shidden(?=[\s>=])/.test(tag);
+  return "hidden" in attrsOf(tag);
 }
 
 /** The sign-out form's open tag, which an anonymous render must not carry at all. */
 function signoutForm(html: string): string {
-  return /<form[^>]*\saction="\/auth\/signout"[^>]*>/.exec(html)?.[0] ?? "";
+  return tagOf(html, 'action="/auth/signout"');
 }
 
 /** The sign-out form's hidden token field. */
 function csrfField(html: string): string {
-  return /<input[^>]*\sname="_csrf"[^>]*>/.exec(html)?.[0] ?? "";
-}
-
-/** One attribute off an open tag — the whole tag is not asserted, since its class list is forge's to change. */
-function attrOf(tag: string, name: string): string {
-  return new RegExp(`\\s${name}="([^"]*)"`).exec(tag)?.[1] ?? "";
+  return tagOf(html, 'name="_csrf"');
 }
 
 // Drop either the filters or the slots prop and the nav still renders — showing every visitor the

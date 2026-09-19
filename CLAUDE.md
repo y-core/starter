@@ -103,16 +103,16 @@ never the body itself (`AGENT_GUIDE.md` §10).
 (`AGENT_GUIDE.md` §8, `CODE_RULES.md` §5c). Route what you are about to write **before** you write
 it: a second copy is an amendment the moment the two disagree.
 
-| What you are holding                                                         | Its one home                                                                                                | How you reach it                                              |
-| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| A rule that would still be true in a sibling forge application               | the fleet canon                                                                                             | `knowledge_search` → `knowledge_read`; `warden search` / `warden read <id>` |
-| A rule about the library's own behaviour — a helper's contract, a `data-slot` | the installed forge's consumer documents, **advisory**                                                      | the same tools; the hit is labelled `dependency:forge/<DOC>.md` |
-| A ruling only this repository has                                            | a budgeted comment at the code it governs, or a line in this file where the ruling is about the repository  | `rg` — there is exactly one copy to find                      |
-| A fact about this code — a route, a binding, a token, a gate step, a schema   | the one file that owns it                                                                                   | `rg`, `find`, LSP — never prose                               |
-| A claim about what the code does                                             | a test that asserts it (`CODE_RULES.md` §5e)                                                                | `bun run verify --only test:unit`                             |
-| Work not yet done                                                            | a ledger task, over MCP (`AGENT_WORKFLOW.md` §5)                                                            | the `ledger` MCP tools                                        |
-| The history of a decision                                                    | the commit message                                                                                          | `git log`                                                     |
-| Consumer-facing usage — how to call a unit                                   | that unit's `README.md` (`AGENT_GUIDE.md` §6c)                                                              | open it                                                       |
+| What you are holding | Its one home | How you reach it |
+| --- | --- | --- |
+| A rule that would still be true in a sibling forge application | the fleet canon | `knowledge_search` → `knowledge_read`; `warden search` / `warden read <id>` |
+| A rule about the library's own behaviour — a helper's contract, a `data-slot` | the installed forge's consumer documents, **advisory** | the same tools; the hit is labelled `dependency:forge/<DOC>.md` |
+| A ruling only this repository has | a budgeted comment at the code it governs, or a line in this file where the ruling is about the repository | `rg` — there is exactly one copy to find |
+| A fact about this code — a route, a binding, a token, a gate step, a schema | the one file that owns it | `rg`, `find`, LSP — never prose |
+| A claim about what the code does | a test that asserts it (`CODE_RULES.md` §5e) | `bun run verify --only test:unit` |
+| Work not yet done | a ledger task, over MCP (`AGENT_WORKFLOW.md` §5) | the `ledger` MCP tools |
+| The history of a decision | the commit message | `git log` |
+| Consumer-facing usage — how to call a unit | that unit's `README.md` (`AGENT_GUIDE.md` §6c) | open it |
 
 **The test between the first row and the third is one question:** would this sentence still be true
 in a sibling repository? A rule that names a real subpath, binding, table or route is local by
@@ -150,15 +150,15 @@ this fact" in place of the register.
 
 ## Toolchain
 
-| Tool           | Role                                                               |
-| -------------- | ------------------------------------------------------------------ |
-| `oxlint`       | Linter (use instead of `eslint`)                                   |
-| `oxfmt`        | Formatter and import sorter (use instead of `prettier`)            |
-| `forge verify` | The gate — `config/steps.ts` is the step table it loads            |
-| `forge assets` | Client bundle (esbuild), Tailwind v4 and Lucide sprite pipeline    |
-| `forge db`     | The whole database lifecycle — compose, lint, migrate, seed, reset |
-| `playwright`   | Browser runner for the `browser` set                               |
-| `warden`       | Governing-document index, agent sync, and the MCP server over both |
+| Tool | Role |
+| --- | --- |
+| `oxlint` | Linter (use instead of `eslint`) |
+| `oxfmt` | Formatter and import sorter (use instead of `prettier`) |
+| `forge verify` | The gate — `config/steps.ts` is the step table it loads |
+| `forge assets` | Client bundle (esbuild), Tailwind v4 and Lucide sprite pipeline |
+| `forge db` | The whole database lifecycle — compose, lint, migrate, seed, reset |
+| `playwright` | Browser runner for the `browser` set |
+| `warden` | Governing-document index, agent sync, and the MCP server over both |
 
 A bare `bun run verify` is the `standard` tier, the run a task closes on. These flags are not
 findable from `package.json`:
@@ -207,9 +207,12 @@ because only the app knows which of its directories the budget is scanned over �
 Some preset options carry data this repository owns, and each is stated at the call site rather than
 defaulted: `exposure` demands `require: "unroutable"` — the keys it names must hold the values that
 keep the Worker off the public internet, not merely be stated; `ssrBoundary` names `src/client` as
-the browser-only tree and `main.ts` as the one basename allowed to cross it; and `contrast` audits
+the browser-only tree and `main.ts` as the one basename allowed to cross it; `contrast` audits
 forge's pairs against **this app's** palette, with `config/contrast.ts` carrying the exemption
-`src/assets/css/custom.css` invalidates by re-declaring the gray ramp.
+`src/assets/css/custom.css` invalidates by re-declaring the gray ramp; and `markdown` names the
+prose this repository holds to a layout, in `config/markdown.ts`. That last one is paired with
+`"**/*.md"` in `.oxfmtrc.json`'s `ignorePatterns`, and the pairing is load-bearing rather than
+tidiness: oxfmt and `validate-markdown` would otherwise own the same bytes and disagree about them.
 
 ---
 
@@ -221,12 +224,12 @@ forge's pairs against **this app's** palette, with `config/contrast.ts` carrying
 (`APP_ARCHITECTURE.md` §1b). The dev entry is a second file rather than a flag, so an allowance
 minted for development cannot reach production by construction (`APP_ARCHITECTURE.md` §1c).
 
-| Layer        | Role                                                        | Location        | Runtime                                        |
-| ------------ | ----------------------------------------------------------- | --------------- | ---------------------------------------------- |
-| **server**   | routes, controllers, middleware, SSR views, CSP             | `src/`          | Cloudflare Worker — never ships to the browser |
-| **domain**   | typed page and site content shapes                          | `src/model/`    | isomorphic                                     |
-| **services** | external integrations (email, and anything else off-Worker) | `src/services/` | Cloudflare Worker                              |
-| **client**   | HTMX wiring + mounted scopes                                | `src/client/`   | browser                                        |
+| Layer | Role | Location | Runtime |
+| --- | --- | --- | --- |
+| **server** | routes, controllers, middleware, SSR views, CSP | `src/` | Cloudflare Worker — never ships to the browser |
+| **domain** | typed page and site content shapes | `src/model/` | isomorphic |
+| **services** | external integrations (email, and anything else off-Worker) | `src/services/` | Cloudflare Worker |
+| **client** | HTMX wiring + mounted scopes | `src/client/` | browser |
 
 **Pattern:** one composition root → global middleware → declarative route map → controllers →
 services → views, over a model of typed domain shapes.
@@ -256,23 +259,23 @@ Add new code in the layer its concern belongs to; reuse an existing export befor
 never duplicate a capability forge already provides (`FORGE_CONSUMPTION.md` §1a). **Where a thing
 goes is read off the file that already holds one of its kind** — open the neighbour and follow it.
 
-| Adding…                                              | Goes to                                                                  | Recipe                     |
-| ---------------------------------------------------- | ------------------------------------------------------------------------ | -------------------------- |
-| a page or a form endpoint                            | a route in `src/routes.ts`, bound to a controller in `src/controllers/`   | `APP_ARCHITECTURE.md` §5a  |
-| a guard on a route                                   | that route's middleware list — never inline in a controller              | `BOUNDARIES.md` §2b        |
-| global middleware                                    | `src/app/middleware.ts`, in the order the boundaries doc sets            | `BOUNDARIES.md` §2a        |
-| a call to an external API                            | a module in `src/services/`, taking typed domain shapes                  | `APP_ARCHITECTURE.md` §2a  |
-| a domain shape or its validation schema              | `src/model/`                                                             | `BOUNDARIES.md` §3a        |
-| rendered markup                                      | `src/views/` — no fetching, no config reads, no business rules           | `APP_ARCHITECTURE.md` §2d  |
-| an SSR component                                     | a forge `ui/core` primitive composed in `src/views/`                     | `FORGE_CONSUMPTION.md` §1b |
-| a configured scalar or a new binding                 | `src/app/config.ts`, read through the validated accessor                 | `APP_ARCHITECTURE.md` §3a  |
-| client behaviour                                     | a mounted scope in `src/client/`, registered from `main.ts`              | `BOUNDARIES.md` §1b        |
-| a theme token                                        | `src/assets/tailwind.css` — registered, never inlined                    | `FORGE_CONSUMPTION.md` §5b |
-| a schema change                                      | `config/schema.sql`, then `forge db migrate compose` — never hand-written | —                          |
-| a test                                               | `tests/`, in the set decided by what the test needs                      | `TESTING.md` §2a           |
-| a build-time config module — assets, gate step table | `config/` — outside `tsconfig.json`'s `include`                          | `CONFIG_BASELINE.md` §3    |
-| a capability a second application would want         | upstream in `@y-core/forge`, not a local helper                          | `FORGE_CONSUMPTION.md` §3a |
-| a rule, a ruling, a catalog or an accepted risk      | wherever the _Governance Router_ sends it                                | `AGENT_GUIDE.md` §6d       |
+| Adding… | Goes to | Recipe |
+| --- | --- | --- |
+| a page or a form endpoint | a route in `src/routes.ts`, bound to a controller in `src/controllers/` | `APP_ARCHITECTURE.md` §5a |
+| a guard on a route | that route's middleware list — never inline in a controller | `BOUNDARIES.md` §2b |
+| global middleware | `src/app/middleware.ts`, in the order the boundaries doc sets | `BOUNDARIES.md` §2a |
+| a call to an external API | a module in `src/services/`, taking typed domain shapes | `APP_ARCHITECTURE.md` §2a |
+| a domain shape or its validation schema | `src/model/` | `BOUNDARIES.md` §3a |
+| rendered markup | `src/views/` — no fetching, no config reads, no business rules | `APP_ARCHITECTURE.md` §2d |
+| an SSR component | a forge `ui/core` primitive composed in `src/views/` | `FORGE_CONSUMPTION.md` §1b |
+| a configured scalar or a new binding | `src/app/config.ts`, read through the validated accessor | `APP_ARCHITECTURE.md` §3a |
+| client behaviour | a mounted scope in `src/client/`, registered from `main.ts` | `BOUNDARIES.md` §1b |
+| a theme token | `src/assets/tailwind.css` — registered, never inlined | `FORGE_CONSUMPTION.md` §5b |
+| a schema change | `config/schema.sql`, then `forge db migrate compose` — never hand-written | — |
+| a test | `tests/`, in the set decided by what the test needs | `TESTING.md` §2a |
+| a build-time config module — assets, gate step table | `config/` — outside `tsconfig.json`'s `include` | `CONFIG_BASELINE.md` §3 |
+| a capability a second application would want | upstream in `@y-core/forge`, not a local helper | `FORGE_CONSUMPTION.md` §3a |
+| a rule, a ruling, a catalog or an accepted risk | wherever the _Governance Router_ sends it | `AGENT_GUIDE.md` §6d |
 
 Every row names a **concrete destination**. A row that names none is not a rule; delete it or finish
 it. The recipe column cites the canon where one governs and is `—` where the destination is the only

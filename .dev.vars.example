@@ -17,7 +17,8 @@ SITE_ORIGIN=https://starter.devbox.test:8443
 # variable's: src/worker.dev.ts grants them, so no production environment can switch them on.
 LOG_LEVEL=DEBUG
 
-# EMAIL_FROM and EMAIL_TO can be defined here to override defaults from src/app/config.ts
+# EMAIL_FROM and EMAIL_TO are plain-text vars declared in wrangler.jsonc, so they need no line here.
+# Set one below only to override it for `bun run dev`; the schema refuses an empty value either way.
 
 ################################################################################
 # SECRETS - Never place secrets in wrangler.jsonc.

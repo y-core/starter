@@ -1,9 +1,10 @@
 import { describe, expect, it } from "bun:test";
 
 import { assets } from "@assets";
-import { fakeD1, fakeKV } from "@y-core/forge/testing";
+import { attrOf, attrsOf, classesOf, elementOf, fakeD1, fakeKV, innerOf, tagOf } from "@y-core/forge/testing";
 
 import { app } from "../../src/worker";
+import { CONFIG_ENV } from "../env";
 
 const MOCK_ASSETS = { fetch: async () => new Response("", { status: 200 }) } as unknown as Fetcher;
 
@@ -13,18 +14,12 @@ const MOCK_ASSETS_404 = { fetch: async () => new Response("Not Found", { status:
 const MINIMUM_ENV = {
   ASSETS: MOCK_ASSETS,
   SITE_ORIGIN: "https://example.com",
-  CSRF_SECRET: "de7bf4aef360e3a4c3254c9cec7e45d0f1fd98cc2219c62b5b07e826ba1bcc6e",
-  EMAIL_API_KEY: "test-api-key",
-  EMAIL_FROM: "from@example.com",
-  EMAIL_TO: "to@example.com",
-  TURNSTILE_SECRET_KEY: "test-ts-key",
-  TURNSTILE_SITE_KEY: "test-site-key",
-  AUTH_KEY_RING: "9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c3d5e",
-  SESSION_SECRET: "6f2b4a7c0d3e5f7a9b1c3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e",
-  ADMIN_BOOTSTRAP_SECRET: "3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c",
+  ...CONFIG_ENV,
   AUTH_KV: fakeKV(),
   AUTH_DB: fakeD1(),
 } as unknown as Env;
+
+const NOINDEX = '<meta name="robots" content="noindex">';
 
 async function getHomeHtml(): Promise<string> {
   const res = await app.request("/", {}, MINIMUM_ENV);
@@ -34,35 +29,35 @@ async function getHomeHtml(): Promise<string> {
 describe("Layout — page meta", () => {
   it("leaves the site's own title uncomposed and keeps the canonical on the one indexable page", async () => {
     const text = await getHomeHtml();
-    expect(text).toContain("<title>Forge Studio</title>");
-    expect(text).toContain('<link rel="canonical" href="https://example.com/">');
-    expect(text).not.toContain('name="robots"');
+    expect(elementOf(text, "title")).toBe("<title>Forge Studio</title>");
+    expect(elementOf(text, "link", 'rel="canonical"')).toBe('<link rel="canonical" href="https://example.com/">');
+    expect(elementOf(text, "meta", 'name="robots"')).toBe("");
   });
 
   it("composes a page's own title with the site's, and drops the canonical it is noindex against", async () => {
     const res = await app.request("/does-not-exist", {}, { ...MINIMUM_ENV, ASSETS: MOCK_ASSETS_404 });
     const text = await res.text();
     expect(res.status).toBe(404);
-    expect(text).toContain("<title>Page not found — Forge Studio</title>");
-    expect(text).toContain('<meta name="robots" content="noindex">');
-    expect(text).not.toContain('rel="canonical"');
+    expect(elementOf(text, "title")).toBe("<title>Page not found — Forge Studio</title>");
+    expect(elementOf(text, "meta", 'name="robots"')).toBe(NOINDEX);
+    expect(elementOf(text, "link", 'rel="canonical"')).toBe("");
   });
 
   // The mount writes the title and the `noindex`; this app never restates either.
   it("renders a mounted page's own descriptor through the shell", async () => {
     const res = await app.request("/showcase/ui", {}, MINIMUM_ENV);
     const text = await res.text();
-    expect(text).toContain("<title>Catalog — Forge Studio</title>");
-    expect(text).toContain('<meta name="robots" content="noindex">');
-    expect(text).not.toContain('rel="canonical"');
+    expect(elementOf(text, "title")).toBe("<title>Catalog — Forge Studio</title>");
+    expect(elementOf(text, "meta", 'name="robots"')).toBe(NOINDEX);
+    expect(elementOf(text, "link", 'rel="canonical"')).toBe("");
   });
 
   it("carries the site's shared description and OG tags onto a page that states neither", async () => {
     const res = await app.request("/does-not-exist", {}, { ...MINIMUM_ENV, ASSETS: MOCK_ASSETS_404 });
     const text = await res.text();
-    expect(text).toContain('<meta property="og:title" content="Forge Studio">');
-    expect(text).toContain('<meta property="og:type" content="website">');
-    expect(text).toContain('<meta name="twitter:card" content="summary">');
+    expect(elementOf(text, "meta", 'property="og:title"')).toBe('<meta property="og:title" content="Forge Studio">');
+    expect(elementOf(text, "meta", 'property="og:type"')).toBe('<meta property="og:type" content="website">');
+    expect(elementOf(text, "meta", 'name="twitter:card"')).toBe('<meta name="twitter:card" content="summary">');
   });
 
   it("renders the JSON-LD once, nonced, so the strict policy admits it", async () => {
@@ -89,12 +84,13 @@ describe("Layout — dead mobile-nav-markup regression guards", () => {
 
   it('renders data-slot="navbar" on the <details> the CSS and viewport-collapse controller key off', async () => {
     const text = await getHomeHtml();
-    expect(text).toContain('data-slot="navbar"');
+    expect(tagOf(text, 'data-slot="navbar"').startsWith("<details ")).toBe(true);
+    expect(attrsOf(text, 'data-slot="navbar"')).toEqual({ "data-slot": "navbar", id: "primary-nav", "data-navbar-drawer": "" });
   });
 
   it('renders data-scope="navbar" so the eager Resumable scope resumes the bar', async () => {
     const text = await getHomeHtml();
-    expect(text).toContain('data-scope="navbar"');
+    expect(tagOf(text, 'data-scope="navbar"')).toBe('<div data-scope="navbar" data-island-state="{&quot;filters&quot;:[&quot;anonymous&quot;]}">');
   });
 });
 
@@ -116,7 +112,7 @@ describe("Layout — nav landmark structure", () => {
 
   it('renders id="primary-nav" on the navbar', async () => {
     const text = await getHomeHtml();
-    expect(text).toContain('id="primary-nav"');
+    expect(attrOf(text, "id", 'data-slot="navbar"')).toBe("primary-nav");
   });
 });
 
@@ -124,7 +120,7 @@ describe("Layout — sticky neutralisation on the navbar <details>", () => {
   // Tokens rather than the whole class attribute, which would fail on a library restyle that changed
   // nothing about this override.
   function navbarTokens(html: string): Set<string> {
-    return new Set((/<details data-slot="navbar" class="([^"]*)"/.exec(html)?.[1] ?? "").split(" ").filter(Boolean));
+    return new Set(classesOf(html, 'data-slot="navbar"'));
   }
 
   it("keeps this app's positioning overrides through the merge", async () => {
@@ -146,18 +142,16 @@ describe("Layout — sticky neutralisation on the navbar <details>", () => {
 
 /** The anchor pointing at `href`, as its slot, its role and the text it shows. */
 function linkAt(html: string, href: string): { slot: string; role: string; label: string } | null {
-  const escaped = href.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const element = new RegExp(`<a[^>]*\\shref="${escaped}"[^>]*>([^<]*)</a>`).exec(html);
-  if (element === null) return null;
-  const tag = element[0];
-  return { slot: /\sdata-slot="([^"]*)"/.exec(tag)?.[1] ?? "", role: /\srole="([^"]*)"/.exec(tag)?.[1] ?? "", label: element[1] ?? "" };
+  const element = elementOf(html, "a", `href="${href}"`);
+  if (element === "") return null;
+  return { slot: attrOf(element, "data-slot"), role: attrOf(element, "role"), label: innerOf(element) };
 }
 
 describe("Layout — nav content (Showcase menu + Contact bar link)", () => {
   it('renders the "Showcase" trigger label distinct from the hard-coded aria-label="Menu" toggle', async () => {
     const text = await getHomeHtml();
-    expect(text).toContain('aria-label="Menu"');
-    expect(text).toContain("<span>Showcase</span>");
+    expect(attrOf(text, "aria-label", 'data-slot="navbar-toggle"')).toBe("Menu");
+    expect(elementOf(elementOf(text, "button", 'data-slot="menu-trigger"'), "span")).toBe("<span>Showcase</span>");
     expect(text).not.toContain('aria-label="Showcase"');
   });
 
@@ -177,9 +171,9 @@ describe("Layout — nav content (Showcase menu + Contact bar link)", () => {
 
   it("orders the bar as Showcase menu, then Contact, then the theme toggle", async () => {
     const text = await getHomeHtml();
-    const showcase = text.indexOf("<span>Showcase</span>");
-    const contact = text.indexOf('<a href="/#contact" data-slot="navbar-link"');
-    const theme = text.indexOf('data-scope="theme"');
+    const showcase = text.indexOf(tagOf(text, 'data-slot="menu-trigger"'));
+    const contact = text.indexOf(tagOf(text, 'href="/#contact"'));
+    const theme = text.indexOf(tagOf(text, 'data-scope="theme"'));
     expect(showcase).toBeGreaterThan(-1);
     expect(contact).toBeGreaterThan(showcase);
     expect(theme).toBeGreaterThan(contact);
@@ -189,7 +183,7 @@ describe("Layout — nav content (Showcase menu + Contact bar link)", () => {
 describe("Layout — brand link identity vs navigation", () => {
   it("renders the brand link to / outside the <nav> element", async () => {
     const text = await getHomeHtml();
-    const brandIdx = text.indexOf('aria-label="Forge Studio — Home"');
+    const brandIdx = text.indexOf(tagOf(text, 'aria-label="Forge Studio — Home"'));
     const navIdx = text.indexOf('<nav aria-label="Primary"');
     expect(brandIdx).toBeGreaterThan(-1);
     expect(navIdx).toBeGreaterThan(-1);
@@ -208,7 +202,7 @@ describe("Layout — ThemeToggle single instance", () => {
 describe("Layout — skip link", () => {
   it("renders the #main-content skip link before <header", async () => {
     const text = await getHomeHtml();
-    const skipIdx = text.indexOf('href="#main-content"');
+    const skipIdx = text.indexOf(tagOf(text, 'href="#main-content"'));
     const headerIdx = text.indexOf("<header");
     expect(skipIdx).toBeGreaterThan(-1);
     expect(headerIdx).toBeGreaterThan(-1);
@@ -220,10 +214,8 @@ describe("Layout — hamburger/close sprite pair", () => {
   // Read off the manifest rather than spelled out, because the sprite path carries a content hash.
   it("renders both the hamburger and close icon refs in the toggle summary, and neither panel glyph", async () => {
     const sprite = assets.path("svg/sprite.svg");
-    const text = await getHomeHtml();
-    expect(text).toContain(`<use href="${sprite}#icon-hamburger"></use>`);
-    expect(text).toContain(`<use href="${sprite}#icon-close"></use>`);
-    expect(text).not.toContain("#icon-panel-open");
-    expect(text).not.toContain("#icon-panel-close");
+    const toggle = elementOf(await getHomeHtml(), "summary", 'data-slot="navbar-toggle"');
+    const refs = [...toggle.matchAll(/<use href="([^"]*)"><\/use>/g)].map((match) => match[1]);
+    expect(refs).toEqual([`${sprite}#icon-hamburger`, `${sprite}#icon-close`]);
   });
 });

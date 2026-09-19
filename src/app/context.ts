@@ -1,7 +1,6 @@
 import { authNav } from "@y-core/forge/auth/web";
 import type { AppContext as ForgeAppContext } from "@y-core/forge/context";
-import { contextVar, getAppContext } from "@y-core/forge/context";
-import type { DevAllowance } from "@y-core/forge/dev";
+import { getAppContext } from "@y-core/forge/context";
 import { importCsrfKey, mintCsrf } from "@y-core/forge/form";
 import { getNonce } from "@y-core/forge/security";
 
@@ -15,9 +14,6 @@ const resolveNav = authNav({
   signoutPath: authWebPaths.auth.signout(),
   secret: (context) => importCsrfKey(configStore.get(getAppContext<AppEnv, Record<string, string>, AppConfig>(context).env).security.csrf.secret),
 });
-
-/** The development entry's allowance, unset for every request on the production entry, which mints none. */
-export const devAllowanceCtx = contextVar<DevAllowance>("devAllowance");
 
 /** Materializes per-request values into a typed `ctx`, taking config explicitly rather than off the context. */
 export async function renderContext(c: ForgeAppContext<AppEnv>, config: AppConfig, csrfPath?: string): Promise<RenderContext> {
