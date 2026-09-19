@@ -42,3 +42,8 @@ AUTH_KEY_RING=your-64-char-hex-auth-root-secret
 
 # Session cookie signing secret — at least 32 characters; createSignedCookie throws below that.
 SESSION_SECRET=your-64-char-hex-session-secret
+
+# First-admin claim — what `/admin/elevate` demands before granting the administrator role. It is
+# the only path by which any account acquires that role, so an unset value leaves `/admin/*` mounted
+# and unreachable. Rotate it once the first admin exists. Generate with: openssl rand -hex 32
+ADMIN_BOOTSTRAP_SECRET=your-64-char-hex-admin-bootstrap-secret

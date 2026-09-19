@@ -58,16 +58,8 @@ export function Layout({ ctx, meta, children }: LayoutProps) {
 
         <script nonce={nonce} src={assets.path("js/main.js")} type='module' />
       </head>
-      {/* Sticky footer: the column is at least a viewport tall and the footer takes the slack through
-          `mt-auto`. An auto margin is what keeps this indifferent to what a page view renders — no
-          `flex-1` wrapper around the `children` Slot, so a page owns its own `<main>` sizing as before.
-
-          The `has-` pair is the opt-in second regime, for a page that fills the viewport rather than
-          flowing down it (the log viewer's `<main>` stamps `data-fill-viewport`). `min-h-dvh` leaves the
-          column's height indefinite, and an indefinite flex column takes its height from its items'
-          content — so a long log table would grow the document no matter how the items flex. `h-dvh`
-          makes the height definite, which is what lets `flex-1` hand the page a fixed box to scroll
-          inside; `overflow-hidden` keeps the shell itself from scrolling. Every other page is untouched. */}
+      {/* `min-h-dvh` leaves the column's height indefinite, so a flex child sizes to its content and a
+          long table grows the document; the `has-` pair makes it definite for a page that opts in. */}
       <body class='flex min-h-dvh flex-col has-data-fill-viewport:h-dvh has-data-fill-viewport:overflow-hidden'>
         <a
           href='#main-content'
@@ -75,9 +67,8 @@ export function Layout({ ctx, meta, children }: LayoutProps) {
           Skip to main content
         </a>
 
-        {/* The blur sits on a sibling layer rather than on the <header> itself: `backdrop-filter`
-            establishes a containing block, against which the drawer's fixed panel would position —
-            it would land inside the header band instead of over the page. */}
+        {/* The blur sits on a sibling layer because `backdrop-filter` establishes a containing block,
+            against which the drawer's fixed panel would position — inside the header band. */}
         <header class='sticky top-0 z-50 border-b border-border'>
           <div class='absolute inset-0 -z-10 bg-background/80 backdrop-blur-lg' aria-hidden='true' />
           <div class='mx-auto flex max-w-7xl items-center justify-between px-6 py-4 lg:px-10'>
@@ -88,11 +79,8 @@ export function Layout({ ctx, meta, children }: LayoutProps) {
               <div class='min-w-0 font-serif text-xl font-semibold tracking-wider text-foreground'>Forge Studio</div>
             </a>
 
-            {/* ThemeToggle is a NavSlot per forge's own guidance (rule:forge-ui-nav-theme-toggle-placement),
-                but it is rendered here — once, outside <Navbar> — rather than slotted in, since
-                everything inside the bar lives under PANEL_CLASS.mobile (hidden until the mobile
-                menu opens), which would hide a slotted toggle from the mobile header. Deliberate
-                override of rule:forge-ui-nav-slot-not-link. */}
+            {/* Deliberate override of rule:forge-ui-nav-theme-toggle-placement: a slotted toggle would
+                sit under PANEL_CLASS.mobile and so vanish from the mobile header until the menu opens. */}
             <div class='flex items-center gap-2'>
               <Navbar
                 id='primary-nav'

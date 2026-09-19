@@ -10,6 +10,7 @@ const COMPLETE_ENV = {
   TURNSTILE_SITE_KEY: "test-site-key",
   AUTH_KEY_RING: "9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c3d5e",
   SESSION_SECRET: "6f2b4a7c0d3e5f7a9b1c3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e",
+  ADMIN_BOOTSTRAP_SECRET: "3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c",
 };
 
 function envWithout(key: keyof typeof COMPLETE_ENV): Record<string, unknown> {

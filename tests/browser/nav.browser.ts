@@ -1,9 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-/** The chrome a visitor drives with the keyboard and the pointer: the drawer, and the theme switch.
- *
- *  Both are controllers `src/client/main.ts` resumes, and neither is observable from a markup test —
- *  the server renders a closed drawer and the `system` preference whatever the browser then does. */
+/** The chrome a visitor drives with the keyboard and the pointer: the drawer, and the theme switch. */
 
 const NARROW = { width: 390, height: 844 };
 

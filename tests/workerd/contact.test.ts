@@ -1,12 +1,7 @@
 /// <reference types="@y-core/forge/testing/node" />
-// The directive is file-scoped, so the node surface `startDevServer` needs reaches this suite alone
-// and the Worker half of the program keeps `"types": []`.
+// File-scoped, so the Worker half of the program keeps `"types": []`.
 
-// The suite whose absence hid `bug-260908-17`. `tests/seam/routes.test.ts` stubs `fetch` for the
-// siteverify URL, so no case there has ever exercised real Turnstile verification — and a guard that
-// could not pass in dev was invisible, because its refusal is a validation refusal by design. These
-// cases run the deployed chain inside workerd and call the real siteverify, which the "always passes"
-// testing keys answer for any token at all.
+/** The deployed chain inside workerd, calling the real siteverify the seam suite stubs out. */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
 import { type DevServer, startDevServer } from "@y-core/forge/testing/workerd";
@@ -21,6 +16,7 @@ const VARS = {
   TURNSTILE_SITE_KEY: "1x00000000000000000000AA",
   AUTH_KEY_RING: "9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c3d5e",
   SESSION_SECRET: "6f2b4a7c0d3e5f7a9b1c3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e",
+  ADMIN_BOOTSTRAP_SECRET: "3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c",
 };
 
 const VALID = {
@@ -33,9 +29,8 @@ const VALID = {
 const FORM_MAX_BYTES = 100 * 1024;
 const BOT_GUARD_WARN = "Submission refused by a bot guard";
 
-// The email API is reached for real and refuses the placeholder key with a 401, so a submission that
-// passes every guard ends at the delivery failure rather than at the success fragment. That is still
-// the assertion this suite exists to make: a tripped guard answers 422, never 500.
+// The email API is reached for real and refuses the placeholder key, so a submission that clears
+// every guard ends here rather than at the success fragment.
 const EXPECTED_DELIVERY_ERROR =
   '<div class="rounded-2xl border border-status-danger-border bg-status-danger-subtle px-4 py-3 text-sm text-status-danger-subtle-foreground"><p>Something went wrong. Please try again or contact us directly.</p></div>';
 
@@ -120,9 +115,8 @@ describe("POST /api/contact under workerd", () => {
     expect(await logsSince(mark)).not.toContain(BOT_GUARD_WARN);
   });
 
-  // The regression test for `bug-260908-17`: a tripped guard is a 422 naming the schema's first
-  // declared field, which is indistinguishable from a wrong `name` on the response alone. The warn
-  // line is the only thing that tells the two apart, so both are pinned together.
+  // A tripped guard answers a 422 naming the schema's first field, indistinguishable on the response
+  // alone from a wrong `name` — the warn line is the only thing telling the two apart.
   it("refuses a submission carrying no Turnstile token, and says so in the log", async () => {
     const mark = server.logs().length;
 

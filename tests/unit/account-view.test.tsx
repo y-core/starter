@@ -7,10 +7,8 @@ import { render } from "@y-core/forge/testing";
 
 import { AccountView } from "../../src/views/account";
 
-// `tests/seam/router.auth.test.ts` drives this page through the real app, which is where every case that
-// can be reached that way belongs. These two branches cannot: `fakeAuthD1` answers a verified
-// address for every user it holds and always carries a creation date, so nothing driven through the
-// app reaches the unverified badge or the page with no date on it.
+// Here rather than in the seam suite because `fakeAuthD1` answers a verified address and a creation
+// date for every user it holds, so nothing driven through the app reaches these branches.
 const PROPS = {
   email: "ada@example.com",
   emailVerifiedAt: 1_700_000_000_000,

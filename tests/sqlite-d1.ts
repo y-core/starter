@@ -12,14 +12,7 @@ interface BoundStatement extends D1PreparedStatement {
 /** The composed migration this repository deploys, so a fixture database is the deployed schema. */
 const MIGRATION = new URL("../config/migrations/0001_schema.sql", import.meta.url);
 
-/**
- * An in-memory SQLite database carrying this repository's own migration, behind the D1 shape the
- * app binds.
- *
- * The point is that no expected value in a test over it is written by anyone: SQLite decides which
- * rows a `DELETE … WHERE` removes, and the statements come from the library under test. A fake that
- * records SQL strings can only be asserted against a copy of those same strings.
- */
+/** An in-memory SQLite database carrying this repository's own migration, behind the D1 shape the app binds. */
 export function sqliteD1(): D1DatabaseLike & { rows: <Row = unknown>(sql: string) => Row[]; close: () => void } {
   const db = new Database(":memory:");
   db.exec(readFileSync(MIGRATION, "utf-8"));

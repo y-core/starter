@@ -10,10 +10,12 @@ import { fakeAuthD1, fakeKV, mintTestCsrfToken } from "@y-core/forge/testing";
 import type { StepUpFactor } from "../../src/app/types";
 import { routes } from "../../src/routes";
 import { app } from "../../src/worker";
+import { sqliteD1 } from "../sqlite-d1";
 
 const CSRF_SECRET = "de7bf4aef360e3a4c3254c9cec7e45d0f1fd98cc2219c62b5b07e826ba1bcc6e";
 const SESSION_SECRET = "6f2b4a7c0d3e5f7a9b1c3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e";
 const AUTH_KEY_RING = "9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c3d5e";
+const ADMIN_BOOTSTRAP_SECRET = "3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c";
 
 const USER_ID = "01890a5d-ac96-774b-bcce-b302099a8057";
 const USER_EMAIL = "ada@example.com";
@@ -53,14 +55,12 @@ const SITE_ORIGIN = "https://example.com";
 /** The address every POST arrives from, unless a case is measuring the key or its absence. */
 const CALLER_IP = "203.0.113.1";
 
-// The auth group's rate limit keys on the caller alone and applies to its reads as well as its
-// mutations, so even a GET of the sign-in page answers 503 without this — behind Cloudflare the
-// header always rides along, which is what `trustCfHeaders` says.
+// The auth group's rate limit covers its reads too, so even a GET of the sign-in page answers 503
+// without this.
 const CALLER: Record<string, string> = { "CF-Connecting-IP": CALLER_IP };
 
-// What a same-origin browser POST actually carries, and what `originProtection` judges it on:
-// `Sec-Fetch-Site` is the veto and `Origin` is the allowlist check, so a request missing either is
-// refused.
+// What a same-origin browser POST actually carries: `Sec-Fetch-Site` is the veto `originProtection`
+// applies, `Origin` the allowlist check, and a request missing either is refused.
 const BROWSER_POST: Record<string, string> = { ...CALLER, Origin: SITE_ORIGIN, "Sec-Fetch-Site": "same-origin" };
 
 interface AuthState {
@@ -102,14 +102,41 @@ function authEnv(state: AuthState = {}) {
     TURNSTILE_SITE_KEY: "test-site-key",
     AUTH_KEY_RING,
     SESSION_SECRET,
+    ADMIN_BOOTSTRAP_SECRET,
     AUTH_KV: kv,
     AUTH_DB: db,
-    // The auth groups carry a rate limit, and an absent binding is a 503 rather than a skipped
-    // guard — the same contract `tests/seam/routes.test.ts` documents for its minimum environment. The
-    // case that judges the limiter replaces it.
+    // Present because an absent binding is a 503 rather than a skipped guard; the case that judges
+    // the limiter replaces it.
     RATE_LIMITER: { limit: async () => ({ success: true }) },
   } as unknown as Env;
   return { env, kv, db };
+}
+
+// `claimFirstAdmin` puts its whole guard inside the writing statement — `WHERE id = ? AND <no admin
+// yet>` — which `fakeAuthD1`, reporting nothing written, can only ever refuse.
+/** The env of a settled, non-admin account on a real SQLite database carrying this app's migration. */
+async function claimEnv() {
+  const db = sqliteD1();
+  const hex = USER_ID.replaceAll("-", "");
+  const now = Date.now();
+  await db.exec(
+    `INSERT INTO auth_users (id, email, email_key, email_verified_at, is_admin, created_at, updated_at)
+     VALUES (unhex('${hex}'), '${USER_EMAIL}', '${USER_EMAIL}', ${now}, 0, ${now}, ${now})`,
+  );
+  for (const [index, kind] of SETTLED.entries()) {
+    await db.exec(
+      `INSERT INTO auth_factors (id, user_id, kind, confirmed_at, created_at, updated_at)
+       VALUES (unhex('${index.toString(16).padStart(32, "0")}'), unhex('${hex}'), '${kind}', ${now}, ${now}, ${now})`,
+    );
+  }
+  const kv = fakeKV();
+  const { env } = authEnv({ factors: SETTLED });
+  return { env: { ...env, AUTH_KV: kv, AUTH_DB: db } as unknown as Env, kv, db };
+}
+
+/** Whether the account the claim runs against holds the administrator role, read off the database. */
+function isAdmin(db: ReturnType<typeof sqliteD1>): boolean {
+  return db.rows<{ is_admin: number }>("SELECT is_admin FROM auth_users")[0]?.is_admin === 1;
 }
 
 async function session(kv: ReturnType<typeof fakeKV>, values: Record<string, unknown>): Promise<{ cookie: string; id: string }> {
@@ -159,8 +186,8 @@ function paragraphOf(html: string): string {
   return /<p class="text-muted-foreground">[^<]*<\/p>/.exec(html)?.[0] ?? "";
 }
 
-// A browser submits every named control the form rendered, not the two fields a test remembered to
-// build — so a field a view grows and the action does not accept fails here rather than in production.
+// A browser submits every named control the form rendered, not the fields a test remembered to build
+// — so a field a view grows and the action does not accept fails here rather than in production.
 /** Every `name`/`value` pair of the first form in `html`, as the body a browser would post. */
 function formBody(html: string, typed: Record<string, string> = {}): URLSearchParams {
   const form = /<form[^>]*>[\s\S]*?<\/form>/.exec(html)?.[0] ?? "";
@@ -281,18 +308,14 @@ describe("the absolute session lifetime and the revocation barrier", () => {
   });
 });
 
-// This app ships `AUTH_SECOND_FACTORS = { "totp-app": "mandatory", passkey: "optional" }`, so an
-// account owes an authenticator app before it reaches any signed-in page, and may add a passkey
-// besides. Flipping that switch is what each of these four would change.
+// `AUTH_SECOND_FACTORS` makes the authenticator app mandatory and the passkey optional here, so
+// flipping that switch is what every case below would change.
 describe("the second-factor configuration this app ships", () => {
-  // This app's own page carries the same two guards forge's account group does. Without the
-  // enrolment guard it would render to a visitor still owing the factor the deployment demands,
-  // which reads a mandatory second factor as optional.
   it("sends a signed-in visitor owing the mandatory factor to the page that enrols it", async () => {
     const { env, kv } = authEnv();
     const { cookie } = await signedIn(kv);
     const res = await app.request(routes.account.href(), { headers: { cookie } }, env);
-    expect(res.status).toBe(302);
+    expect(res.status).toBe(303);
     expect(res.headers.get("location")).toBe("/auth/enrol/totp");
   });
 
@@ -303,22 +326,31 @@ describe("the second-factor configuration this app ships", () => {
     expect(res.headers.get("location")).toBe("/auth/signin?next=%2Faccount");
   });
 
-  // The gap the per-factor requirement closes. An account holding only the optional passkey used to
-  // read as settled — it had *a* second factor — so the deployment that believes it mandates the
-  // authenticator app did not. `resolve` now names only what is owed, and the visitor lands on it.
+  // The gap the per-factor requirement closes: an account holding *a* second factor reads as settled
+  // unless `resolve` names only what is owed.
   it("owes the mandatory factor to a visitor who enrolled only the optional one", async () => {
     const { env, kv } = authEnv({ factors: ["passkey"] });
     const { cookie } = await signedIn(kv, true);
     const res = await app.request(routes.account.href(), { headers: { cookie } }, env);
-    expect(res.status).toBe(302);
+    expect(res.status).toBe(303);
     expect(res.headers.get("location")).toBe("/auth/enrol/totp");
+  });
+
+  // The only case that pins `stepUpPath`: enrolled, so no enrolment is owed, but carrying no
+  // step-up stamp. Without it both copies of the setting can name a page that does not exist.
+  it("sends an enrolled visitor carrying no step-up to the page that takes one", async () => {
+    const { env, kv } = authEnv({ factors: SETTLED });
+    const { cookie } = await signedIn(kv);
+    const res = await app.request(routes.account.href(), { headers: { cookie } }, env);
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe("/auth/verify");
   });
 
   it("names the mandatory factor as the enrolment a settled visitor is bounced from", async () => {
     const { env, kv } = authEnv({ factors: SETTLED });
     const { cookie } = await signedIn(kv, true);
     const res = await app.request("/auth/enrol/totp", { headers: { cookie } }, env);
-    expect(res.status).toBe(302);
+    expect(res.status).toBe(303);
     expect(res.headers.get("location")).toBe(routes.account.href());
   });
 });
@@ -392,12 +424,41 @@ describe("requireAdmin on /admin", () => {
     expect(headingOf(await res.text())).toBe('<h1 class="text-xl font-semibold text-foreground">Users</h1>');
   });
 
-  it("admits a non-admin to the elevation bootstrap, which is deliberately not admin-gated", async () => {
+  // The claim is deliberately not admin-gated — it is how the first admin exists at all. The
+  // configured secret is the whole gate, so both directions of it are what has to be covered.
+  it("admits a non-admin to the elevation bootstrap, which the secret gates rather than the role", async () => {
     const { env, kv } = authEnv({ factors: SETTLED });
     const { cookie } = await signedIn(kv, true);
     const res = await app.request("/admin/elevate", { headers: { cookie } }, env);
     expect(res.status).toBe(200);
     expect(headingOf(await res.text())).toBe('<h1 class="text-xl">Claim the administrator role</h1>');
+  });
+
+  it("refuses a claim presenting the wrong secret, and writes no role", async () => {
+    const { env, kv, db } = await claimEnv();
+    const { cookie, id } = await signedIn(kv, true);
+    const token = await mintTestCsrfToken(CSRF_SECRET, "/admin/elevate", { subject: id });
+    const body = new URLSearchParams({ confirm: "yes", secret: `${ADMIN_BOOTSTRAP_SECRET}x` });
+
+    const res = await post("/admin/elevate", env, cookie, token, body);
+
+    expect(res.status).toBe(422);
+    expect(isAdmin(db)).toBe(false);
+    db.close();
+  });
+
+  it("grants the administrator role to a claim presenting the configured secret", async () => {
+    const { env, kv, db } = await claimEnv();
+    const { cookie, id } = await signedIn(kv, true);
+    const token = await mintTestCsrfToken(CSRF_SECRET, "/admin/elevate", { subject: id });
+    const body = new URLSearchParams({ confirm: "yes", secret: ADMIN_BOOTSTRAP_SECRET });
+
+    const res = await post("/admin/elevate", env, cookie, token, body);
+
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe("/admin/users");
+    expect(isAdmin(db)).toBe(true);
+    db.close();
   });
 });
 
@@ -443,10 +504,8 @@ describe("authCsrfGuard on the auth prefixes", () => {
   });
 });
 
-// The auth group declares no guards of its own — it exists only to carry these two — so both
-// policies reach the route through a sibling field of the group rather than through its middleware
-// list. Expanding the group by that list alone left the three unauthenticated POSTs with neither,
-// which is what these two cases refuse to let happen again.
+// The auth group declares no guards of its own, so both policies reach the route through a sibling
+// field — and a group expanded by its middleware list alone carries neither.
 describe("the auth group's origin and rate-limit policies", () => {
   it("refuses a sign-in posted from another origin", async () => {
     const { env, kv } = authEnv();
@@ -476,10 +535,8 @@ describe("the auth group's origin and rate-limit policies", () => {
   });
 });
 
-// Every other mutation case here pre-persists a session with `anonymous(kv)`, which is what a real
-// first-time visitor does not have. The token is bound to a session id, so the id has to survive the
-// GET that minted it: forge marks the session dirty when the CSRF subject resolver reads `.id`, and
-// this is the consumer-side proof that the resulting `Set-Cookie` carries the same session into the POST.
+// Every other mutation case pre-persists a session, which a real first-time visitor has not — so
+// this is what proves the `Set-Cookie` from the minting GET carries that session into the POST.
 describe("a first-time visitor with no session at all", () => {
   it("accepts the sign-up its own signed-out page rendered", async () => {
     const { env } = authEnv();
@@ -563,9 +620,8 @@ describe("GET /auth/email-change/confirm", () => {
   });
 });
 
-// The two proofs that forge's auth views are placeable: one page this app owns renders forge's own
-// sign-in card inside this app's chrome, and the email-change confirmation — which is no
-// `AuthViewName`, so it reaches no forge renderer at all — now shares that same chrome.
+// That forge's auth views are placeable: this page renders forge's own sign-in card inside this
+// app's chrome, and the email-change confirmation below shares that chrome through no forge renderer.
 describe("GET /welcome — forge's sign-in card on a route this app owns", () => {
   it("renders the app's own layout around it, with the app's heading above the card's", async () => {
     const { env } = authEnv();

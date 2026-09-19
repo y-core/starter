@@ -29,7 +29,7 @@
   // inferring `Env` from the gitignored `.dev.vars`, which is how the generated declaration came to
   // carry `TURNSTILE_DEV_HOSTNAME` — a key no file in `src/` reads.
   "secrets": {
-    "required": ["SITE_ORIGIN", "LOG_LEVEL", "CSRF_SECRET", "AUTH_KEY_RING", "SESSION_SECRET", "EMAIL_API_KEY", "TURNSTILE_SECRET_KEY", "TURNSTILE_SITE_KEY"]
+    "required": ["SITE_ORIGIN", "LOG_LEVEL", "CSRF_SECRET", "AUTH_KEY_RING", "SESSION_SECRET", "ADMIN_BOOTSTRAP_SECRET", "EMAIL_API_KEY", "TURNSTILE_SECRET_KEY", "TURNSTILE_SITE_KEY"]
   },
   "assets": {
     "binding": "ASSETS",

@@ -32,9 +32,7 @@ const PERSISTED_DENY = [
   "authorization",
 ];
 
-/** Strips PII fields and the stack from a record on its way to KV, which outlives a console line by
- *  months (`BOUNDARIES.md` §4a). The console channel is deliberately left unwrapped: a stack is what
- *  makes a local failure readable, and nothing retains it. */
+/** Strips the PII fields and the stack from a record on its way to KV, which outlives a console line by months (`BOUNDARIES.md` §4a). */
 function redactPersisted(record: LogRecord): LogRecord {
   if (!record.data) return record;
   const data: Record<string, unknown> = { ...record.data };
@@ -47,18 +45,14 @@ function redactPersisted(record: LogRecord): LogRecord {
   return { ...record, data };
 }
 
-/** Refuses a mutation that did not come from htmx: the fragment responses are unusable to any other
- *  client, so accepting one would answer a full-page caller with a bare `<div>`. */
+/** Refuses a mutation that did not come from htmx, whose fragment responses are unusable to any other client. */
 export const htmxOnlyGuard: Middleware = (context, next) => {
   const c = getAppContext<AppEnv, Record<string, string>, AppConfig>(context);
   return isHxRequest(c) ? next() : new Response("Forbidden", { status: 403 });
 };
 
-// Every page carries the shared navbar, which shows a signed-in visitor a different set of
-// destinations — so the identity has to be established on the unguarded routes too, the 404 page
-// included. The JSON API renders no navbar and is the one prefix that would pay a user-store read
-// for an identity nothing on the response depends on. This admits everyone; what a visitor may
-// reach is still decided by the guards below.
+// The navbar shows a signed-in visitor different destinations, so the identity is needed on the
+// unguarded routes too. `/api/` renders none, and would pay a user-store read for nothing.
 /** Establishes the identity for every request that can render the shared navbar. */
 export const navIdentityGuard: Middleware = (context, next) => {
   const c = getAppContext<AppEnv, Record<string, string>, AppConfig>(context);
@@ -66,14 +60,12 @@ export const navIdentityGuard: Middleware = (context, next) => {
   return resolveAuth<AppEnv>({ users: authIdentityOptions.users })(context, next);
 };
 
-// Both, and in this order, because forge's own account group carries both: an app page that
-// established an identity but skipped `requireEnrolment` would let a visitor who still owes the
-// deployment's mandatory factor sit on a signed-in page, which is the demand read as optional.
+// Dropping `requireEnrolment` would leave a visitor who still owes the mandatory factor sitting on
+// a signed-in page, which is a mandatory demand read as an optional one.
 /** The identity and enrolment guards this app's own account page carries, as forge's group does. */
 export const accountGuards: readonly Middleware[] = [requireAuth<AppEnv>(authIdentityOptions), requireEnrolment<AppEnv>(authEnrolmentOptions)];
 
-/** Fetch-Metadata plus the configured origin allowlist — strictly stronger than `verifyOrigin`
- *  alone, which accepts a request carrying neither `Origin` nor `Referer`. */
+/** Fetch-Metadata plus the configured origin allowlist, which unlike `verifyOrigin` also refuses a request carrying neither header. */
 export const originGuard: Middleware = originProtection<AppEnv>(originPolicy);
 
 // An absent `RATE_LIMITER` answers 503 unless a development entry licenses the skip, so the
@@ -85,22 +77,18 @@ export const rateLimitGuard: Middleware = (context, next) => {
 
 export const csrfVerifyGuard: Middleware = csrfProtection({
   secret: (context) => importCsrfKey(configStore.get(getAppContext<AppEnv, Record<string, string>, AppConfig>(context).env).security.csrf.secret),
-  // This guard's paths are disjoint from the auth group's, and only the auth group's forms are
-  // posted by a session holder — so there is no subject here to bind a token to. `false` is the
-  // deliberate, greppable opt-out — omitting it is a compile error, not a silent path-only default.
+  // Nothing on these paths is posted by a session holder, so there is no subject to bind to. `false`
+  // is the greppable opt-out: omitting it is a compile error, not a silent path-only default.
   subject: false,
 });
 
-/** The auth prefixes' own CSRF protection, whose tokens are additionally bound to the session that
- *  minted them. Disjoint from `csrfVerifyGuard`'s paths, so the two never both run. */
+/** The auth prefixes' own CSRF protection, whose tokens are bound to the session that minted them. */
 export const authCsrfGuard: Middleware = csrfProtection({
   secret: (context) => importCsrfKey(configStore.get(getAppContext<AppEnv, Record<string, string>, AppConfig>(context).env).security.csrf.secret),
   subject: (context) => sessionCtx.getOptional(context)?.id,
 });
 
-/** Publishes the development allowance on every request, so a handler takes it from the context
- *  rather than from a second entry-point wiring. `DevAllowance` is named at type only here, so the
- *  production bundle holds no module that could mint one. */
+/** Publishes the development allowance on every request, so a handler takes it from the context rather than from a second entry-point wiring. */
 function devAllowanceGuard(dev: DevAllowance): Middleware {
   return (context, next) => {
     devAllowanceCtx.set(getAppContext<AppEnv, Record<string, string>, AppConfig>(context), dev);
@@ -119,41 +107,35 @@ export function registerMiddleware(app: Forge<AppEnv>, security: SecurityHeaders
     // Ahead of `requestId`, because a handler may read the allowance and nothing here renders with
     // the nonce (`forge/ROUTING_AND_MIDDLEWARE.md` §3e).
     ...(dev === undefined ? {} : { before: [devAllowanceGuard(dev)] }),
-    // Cloudflare strips and re-writes `CF-*` headers at the edge, so on Workers they are trustworthy.
-    // Forge defaults to distrust because the same code behind a bare proxy would let a caller forge
-    // them. One flag settles it for `requestId` and for every group's rate limiter alike.
+    // Cloudflare rewrites `CF-*` at the edge, so on Workers they are trustworthy; forge defaults to
+    // distrust because the same code behind a bare proxy would let a caller forge them.
     trustCfHeaders: true,
     logging: {
       channels: (c) => (c.env.LOGS_KV ? [consoleChannel(), withRedaction(kvLogChannel(c.env.LOGS_KV), redactPersisted)] : [consoleChannel()]),
       bindings: (c) => ({ requestId: requestIdCtx.getOptional(c) }),
     },
     securityHeaders: security,
-    // Both KV bindings are optional: `wrangler dev` without a full configuration leaves them
-    // undefined, and the code degrades — console-only logging, a no-op rate limiter. The schema
-    // states that, and still fails a binding that is present with the wrong shape. That refusal
-    // throws, which is why the builder runs it after the headers (`forge/ROUTING_AND_MIDDLEWARE.md` §3e).
+    // The refusal this schema raises throws, which is why the builder runs it after the headers
+    // (`forge/ROUTING_AND_MIDDLEWARE.md` §3e).
     bindings: bindingSetSchema([
       { name: "LOGS_KV", methods: ["get", "put", "list"], label: "a KV namespace binding", optional: true },
       { name: "RATE_LIMITER", methods: ["limit"], label: "a rate-limiter binding", optional: true },
-      // Neither is optional: auth is correctness-critical, so an absent binding fails before the
-      // first request rather than degrading a guard into a no-op (`BOUNDARIES.md` §5).
+      // Not optional, unlike the two above: a guard degraded into a no-op is worse than a refusal
+      // (`BOUNDARIES.md` §5).
       { name: "AUTH_DB", methods: ["prepare"], label: "the auth D1 binding" },
       { name: "AUTH_KV", methods: ["get", "put"], label: "the auth KV binding" },
     ]),
     session: authSessionGuard,
-    // Two D1 reads per isolate for the schema monitor, both on `waitUntil`, so no request waits on
-    // them: a database whose applied schema has drifted from what the migrations recorded says so in
-    // the log rather than in whichever query fails first.
+    // The monitor's D1 reads run on `waitUntil`, so no request waits on them and applied-schema
+    // drift is reported in the log rather than by whichever query fails first.
     globals: [schemaHealthMonitor<AppEnv>({ binding: (c) => c.env.AUTH_DB }), navIdentityGuard],
     guards: [
       { paths: ["/api/*"], guards: [corsGuard] },
-      // `/welcome` embeds forge's sign-in view, whose form posts to `/auth/signin`. Its token has to
-      // be minted under the same session binding that path is verified with, so the route joins the
-      // auth prefixes here rather than taking `csrfVerifyGuard`'s subject-less one.
+      // `/welcome` embeds forge's sign-in view, whose form posts to `/auth/signin` — so its token
+      // must be minted under the same session binding that path verifies against.
       { paths: ["/auth/*", "/account/*", "/admin/*", routes.welcome.href(), routes.account.href()], guards: [authCsrfGuard] },
       ...authGuardGroups(dev),
-      // This app's own signed-in landing page, so it carries the guards forge's account group
-      // carries rather than rendering an empty shell to a visitor with no session.
+      // This app's own signed-in landing page, outside forge's account group but owing its guards.
       { paths: [routes.account.href()], guards: [...accountGuards] },
     ],
   });

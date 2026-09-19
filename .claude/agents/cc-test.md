@@ -70,6 +70,16 @@ No scenario narration: no `// Arrange` / `// Act` / `// Assert`, no `// now the 
 covers. One addition to the budget, and only one: a fixture holding a deliberately malformed or adversarial value may carry a one-line note saying
 what makes it malformed, when the literal does not show it.
 
+**A claim deleted from a comment lands here** (`CODE_RULES.md` §5e, `TESTING.md` §3f). When `cc-dev` or `cc-doc` removes a comment that asserted
+behaviour, that claim is not gone from the system until an assertion holds it — and this agent is where the assertion gets written:
+
+- **Read the diff for deleted prose, not only for added code.** A removed sentence claiming behaviour is a test request, whether or not the handoff
+  named it. Check first whether an existing test already pins it; frequently one does, and nothing is owed.
+- **Where nothing pins it, the test is part of the same change** — not a follow-up and not a ledger task. Say so plainly if you could not write it.
+
+The resulting test is held to the same bar as any other: an assertion that reads an outcome a second mechanism also produces, or a literal copied
+back out of the source, has not landed the claim — it has restated it in a new syntax.
+
 ## Coverage Expectations by Layer
 
 **Model and pure functions** — return-value shape; every failure branch; boundary values (empty string, zero, maximum length); malformed input. No
@@ -97,12 +107,14 @@ runtime-dependent values such as signed tokens and generated ids.
 **Smoke-run the test file you just wrote.** That confirms your new cases pass and your fakes typecheck, it is a handful of lines, and you own the
 fix either way. **Then hand the full gate to `cc-tester`** and act on its verdict — never stream a full gate through this context
 (`AGENT_WORKFLOW.md` §4a). A file-scoped green is not a green gate; report which you have.
+**Offering a task for review claims the gate, not your file** (`AGENT_WORKFLOW.md` §5), and the `quality` tier is what catches a comment budget or
+a document you left over.
 
 **You never edit a test to make a failing gate go green.** If a test you wrote fails, decide which is wrong — the test or the implementation — and
 say so. If the implementation is wrong, that is `cc-dev`'s fix, not yours.
 
-**An unexpected 200 from a guarded route is never fixed by changing the assertion.** It means the guard has a hole, and it is reported as a defect
-(`apps/TESTING.md` §5d). This is the one place where "the test is wrong" is almost never the right conclusion.
+**An unexpected 200 from a guarded route is never answered by changing the assertion.** It means the guard has a hole, and it is reported as a
+defect (`apps/TESTING.md` §5d). This is the one place where "the test is wrong" is almost never the right conclusion.
 
 The one genuine exception is a test whose own logic is wrong: a bad fake, a wrong expected value you derived incorrectly, a missing `await`. That is
 yours to fix, and you fix the cause, not the assertion.
@@ -163,7 +175,7 @@ finding. A claim only counts where the executable code exhibits it.
 in order to double-check your own work** — a second agent re-reading your change is the same reasoning at one remove, at the cost of a whole context
 (`AGENT_WORKFLOW.md` §4a). One agent where one suffices.
 
-You may spawn sub-agents to parallelise segmentable work — for example, authoring tests for several independent routes at once. Three standing
+You may spawn sub-agents to parallelise segmentable work — for example, authoring tests for several independent routes at once. Standing
 conditions:
 
 1. **You stay in control of the split and the synthesis** — you decide the partition and assemble the result.

@@ -1,24 +1,9 @@
-/** The contrast exemptions `validate-contrast` measures this app's palette against.
- *
- *  `src/assets/css/custom.css` re-declares the twelve gray steps, so every exemption forge records
- *  against its own neutral ramp names a value this app no longer has — and the check refuses an
- *  exemption whose recorded value has moved, which is the whole point of recording it. `--border`
- *  is the one such row: it resolves through `--gray-6`, and it is re-measured here.
- *
- *  The four status borders are **not** re-recorded. They resolve through `theme-colors.css`, which
- *  this app does not re-declare, so forge's values and ratios still hold and its rows are taken
- *  verbatim below.
- *
- *  Deliberately outside `tsconfig.json`'s `include`, as every `config/` module is: it is read only
- *  by the step table and ships to no runtime.
- */
+/** The contrast exemptions `validate-contrast` measures this app's palette against. */
 
 import { ACCEPTED_CONTRAST, type AcceptedContrastRow } from "@y-core/forge/ui/contracts/theme";
 
-// Measured with forge's own `contrastRatio` over the resolved sRGB of each step, both modes, against
-// all three surfaces `--border` is drawn on. Light is worst on `--muted`, dark likewise. Neither
-// figure is assumed: a hairline reading as a hairline is a choice someone made, and the number is
-// what keeps it one.
+// Re-derived with forge's own `contrastRatio` over each step's resolved sRGB, in both modes, against
+// every surface `--border` is drawn on — the figures below are measured, never carried over.
 /** `--border` at this app's own gray ramp, replacing forge's row for the same token. */
 const BORDER: AcceptedContrastRow = {
   token: "--border",

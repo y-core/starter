@@ -3,7 +3,7 @@ import { fragmentResponse, renderError, renderSuccess } from "@y-core/forge/http
 import { requestLog } from "@y-core/forge/logging";
 import { createMiddleware } from "@y-core/forge/router";
 import { requireFormContentType } from "@y-core/forge/security";
-import { formMultilineText, formText, strictObject, v } from "@y-core/forge/validation";
+import { formMultilineText, formText, v } from "@y-core/forge/validation";
 
 import { devAllowanceCtx } from "../../app/context";
 import { csrfVerifyGuard, htmxOnlyGuard, originGuard, rateLimitGuard } from "../../app/middleware";
@@ -18,15 +18,12 @@ const MAX_PHONE_LENGTH = 20;
 const MIN_MESSAGE_LENGTH = 15;
 const MAX_MESSAGE_LENGTH = 2000;
 const phonePattern = /^[\d\s\-+()]*$/;
+// Forge's auth forms pair the same two checks, but their `emailField()` is private to forge and
+// carries forge's own copy — `v.rfcEmail` alone admits `ada@localhost`, which nothing can reply to.
+const deliverableDomain = /@[^@]+\.[^@]+$/;
 
-/**
- * `strictObject` (not `v.strictObject`) additionally refuses inherited names — `__proto__`,
- * `constructor`, `toString` — and applies at construction, so the property survives `v.pipe`.
- *
- * `formText()` / `formMultilineText()` (not `v.string()`) because the pipeline's body read passes
- * values through exactly as submitted: a bare `v.pipe(v.string(), v.nonEmpty())` accepts `"   "`.
- */
-export const ContactSchema = strictObject({
+/** The contact form's shape: `v.strictObject`, which refuses an undeclared field, over form-aware string types. */
+export const ContactSchema = v.strictObject({
   name: v.pipe(
     formText(),
     v.transform((val) =>
@@ -42,11 +39,11 @@ export const ContactSchema = strictObject({
     formText(),
     v.nonEmpty("A valid email address is required."),
     v.maxLength(MAX_EMAIL_LENGTH, "A valid email address is required."),
-    v.email("A valid email address is required."),
+    v.rfcEmail("A valid email address is required."),
+    v.regex(deliverableDomain, "A valid email address is required."),
   ),
-  // `v.optional` is load-bearing: `formToObject` leaves an absent field absent rather than
-  // substituting `""`, so a non-optional `phone` would 422 every submission leaving the input
-  // blank (`INPUT_VALIDATION.md` §1d).
+  // `formToObject` leaves an absent field absent rather than substituting `""`, so without
+  // `v.optional` every submission with the input left blank would 422 (`INPUT_VALIDATION.md` §1d).
   phone: v.optional(
     v.pipe(
       formText(),
@@ -62,18 +59,13 @@ export const ContactSchema = strictObject({
   ),
 });
 
-/**
- * The pipeline owns the body read, Turnstile verification, the drop of every consumed field (`_csrf`
- * via `csrfFieldCtx`, and `cf-turnstile-response` because it is named here) and the parse. `handle`
- * is unreachable except through a passing `v.safeParse`.
- */
+/** The contact submission, whose `handle` the pipeline reaches only through a passing parse. */
 export const contactAction = defineAction<typeof ContactSchema, AppEnv, AppConfig>({
   schema: ContactSchema,
   turnstile: {
     secretKey: (_c, config) => config.services.turnstile.secretKey,
-    // The hostname comparison is the same on both entries; the allowance is what lets a development
-    // one pass under Cloudflare's testing secrets, and it is unset in production because only
-    // `worker.dev.ts` can mint it (`INPUT_VALIDATION.md` §4a).
+    // The hostname comparison is the same on both entries; the allowance is only what lets a dev one
+    // pass under Cloudflare's testing secrets (`INPUT_VALIDATION.md` §4a).
     verify: (c, config) => {
       const remoteIp = c.request.headers.get("CF-Connecting-IP");
       const dev = devAllowanceCtx.getOptional(c);
@@ -92,9 +84,7 @@ export const contactAction = defineAction<typeof ContactSchema, AppEnv, AppConfi
   },
 });
 
-/** Transport guards in BOUNDARIES §2c order — request shape, then origin, then rate limit, then
- *  CSRF. Every one reads the request envelope and never the body, which is why they stay in
- *  middleware instead of moving into the action pipeline. */
+/** The contact route, behind the envelope-only transport guards `BOUNDARIES.md` §2c orders. */
 export const contactController = {
   middleware: createMiddleware(requireFormContentType(), htmxOnlyGuard, originGuard, rateLimitGuard, csrfVerifyGuard),
   handler: contactAction,

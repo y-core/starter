@@ -119,9 +119,8 @@ export function HomeView({ ctx, content }: HomeViewProps) {
                       <Spinner icon={CoreIcon} size='sm' />
                     </span>
                   </Button>
-                  {/* Deliberately omits Cloudflare's `cf-turnstile` auto-render class — `mountTurnstile()`
-                        owns rendering, so the widget lifecycle is deterministic. Inside the `<form>` so the
-                        token input Turnstile injects is submitted with it. */}
+                  {/* Inside the `<form>` so the token input Turnstile injects is submitted with it, and
+                        carrying no `cf-turnstile` class, because `mountTurnstile()` owns the render. */}
                   {/* `load='focus'`: the contact form sits at the foot of a long page, so an eager
                         challenge would run for every visitor who never reaches it. */}
                   {turnstileSiteKey && <Turnstile siteKey={turnstileSiteKey} size='normal' load='focus' />}

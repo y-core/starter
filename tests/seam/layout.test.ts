@@ -21,6 +21,7 @@ const MINIMUM_ENV = {
   TURNSTILE_SITE_KEY: "test-site-key",
   AUTH_KEY_RING: "9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c3d5e",
   SESSION_SECRET: "6f2b4a7c0d3e5f7a9b1c3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e",
+  ADMIN_BOOTSTRAP_SECRET: "3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c",
   AUTH_KV: fakeKV(),
   AUTH_DB: fakeD1(),
 } as unknown as Env;
@@ -120,10 +121,8 @@ describe("Layout — nav landmark structure", () => {
 });
 
 describe("Layout — sticky neutralisation on the navbar <details>", () => {
-  // The `<header>` is what sticks in this layout. The library's navbar element sticks by default,
-  // and two sticky ancestors is the bug: the panel then scrolls away from the bar that opened it.
-  // Asserted as the tokens that survived the merge rather than as the whole class attribute, which
-  // would fail on a library restyle that changed nothing about this override.
+  // Tokens rather than the whole class attribute, which would fail on a library restyle that changed
+  // nothing about this override.
   function navbarTokens(html: string): Set<string> {
     return new Set((/<details data-slot="navbar" class="([^"]*)"/.exec(html)?.[1] ?? "").split(" ").filter(Boolean));
   }
@@ -159,7 +158,6 @@ describe("Layout — nav content (Showcase menu + Contact bar link)", () => {
     const text = await getHomeHtml();
     expect(text).toContain('aria-label="Menu"');
     expect(text).toContain("<span>Showcase</span>");
-    // The two labels must be distinct strings — not both "Menu".
     expect(text).not.toContain('aria-label="Showcase"');
   });
 
@@ -219,9 +217,7 @@ describe("Layout — skip link", () => {
 });
 
 describe("Layout — hamburger/close sprite pair", () => {
-  // Read off the manifest rather than spelled out: the sprite path carries a content hash. The pair
-  // itself is the contract — the header is a top bar, so it keeps the hamburger even though
-  // `collapsedAs='drawer'` slides its panel in off-canvas; the panel glyphs are the rails'.
+  // Read off the manifest rather than spelled out, because the sprite path carries a content hash.
   it("renders both the hamburger and close icon refs in the toggle summary, and neither panel glyph", async () => {
     const sprite = assets.path("svg/sprite.svg");
     const text = await getHomeHtml();

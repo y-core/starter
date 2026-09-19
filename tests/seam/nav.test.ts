@@ -29,6 +29,7 @@ describe("resolveNavHref", () => {
 
 const CSRF_SECRET = "de7bf4aef360e3a4c3254c9cec7e45d0f1fd98cc2219c62b5b07e826ba1bcc6e";
 const SESSION_SECRET = "6f2b4a7c0d3e5f7a9b1c3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e";
+const ADMIN_BOOTSTRAP_SECRET = "3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c";
 const AUTH_KEY_RING = "9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c3d5e";
 
 const USER_ID = "01890a5d-ac96-774b-bcce-b302099a8057";
@@ -50,6 +51,7 @@ function navEnv(admin = false) {
     TURNSTILE_SITE_KEY: "test-site-key",
     AUTH_KEY_RING,
     SESSION_SECRET,
+    ADMIN_BOOTSTRAP_SECRET,
     AUTH_KV: kv,
     AUTH_DB: db,
   } as unknown as Env;
@@ -108,9 +110,8 @@ function attrOf(tag: string, name: string): string {
   return new RegExp(`\\s${name}="([^"]*)"`).exec(tag)?.[1] ?? "";
 }
 
-// The wiring these hold, and the unit tests behind `authNav` cannot: that `Layout` passes the
-// filters and slots at all. Drop either prop and the nav still renders — showing every visitor the
-// administrative destinations.
+// Drop either the filters or the slots prop and the nav still renders — showing every visitor the
+// administrative destinations — which is why these are driven through `Layout` and not `authNav`.
 describe("the navbar an identity decides", () => {
   it("offers an anonymous visitor the ways in, and hides the ways on", async () => {
     const html = await homeFor();

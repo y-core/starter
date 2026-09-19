@@ -2,7 +2,6 @@ import { CoreIcon } from "@assets";
 import type { MiddlewareGuardGroup } from "@y-core/forge/app";
 import type { AuthDeferral, AuthFactorOffer, AuthFactorRegistry, AuthFactorService, AuthKeyRing, UserStore } from "@y-core/forge/auth";
 import {
-  createAdminUserService,
   createAdminUserStore,
   createChallengeStore,
   createCredentialStore,
@@ -53,10 +52,12 @@ export const authWebOptions: AuthWebOptions<AppEnv> = {
   resolveServices: resolveAuthRequestServices,
   paths: authWebPaths,
   icon: CoreIcon,
-  // Both this and the guard chain's own `settledPath` name it: this one is where a completed
-  // sign-in lands, the guard's is where a settled visitor is bounced to, and forge defaults both to
-  // the passkey list — which a deployment with no passkeys must not send anyone to.
+  // Where a completed sign-in lands. Forge defaults it to the passkey list, which a deployment that
+  // switched passkeys off must not send anyone to.
   settledPath: routes.account.href(),
+  // The whole gate on the first-admin claim: forge grants the role to whoever presents this, and
+  // answers 404 where no deployment configured one.
+  bootstrapSecret: (c) => configStore.get(c.env).auth.bootstrapSecret,
 };
 
 /** The signed session every auth guard and action reads, built per request because its storage is a binding. */
@@ -72,6 +73,8 @@ export const authSessionGuard: Middleware = (context, next) => {
 export const authIdentityOptions: AuthGuardOptions<AppEnv> = {
   users: async (c) => (await resolveAuthRequestServices(c)).users,
   signinPath: authWebPaths.auth.signin(),
+  factors: async (c) => (await resolveAuthRequestServices(c)).factors,
+  stepUpPath: authWebPaths.auth.verify.show(),
 };
 
 /** What the enrolment guards read, shared so this app's own account page demands what forge's does. */
@@ -101,9 +104,8 @@ function authStores(env: AppEnv) {
   };
 }
 
-// SQLite keeps an expired row where KV dropped it for free. Every read already holds a row against
-// the clock, so this reclaims space rather than correctness — but it throws on failure, because a
-// scheduled run that silently stopped reclaiming is a disk that silently stops.
+// Reclaims space rather than correctness — every read already holds a row against the clock — but it
+// throws, because a scheduled run that silently stopped reclaiming is a disk that silently fills.
 /** Deletes the expired challenge and nonce rows, driven by the worker's scheduled handler. */
 export async function purgeAuthStores(env: AppEnv): Promise<void> {
   const outcome = await purgeAuthEphemera(createD1Client(env.AUTH_DB), Date.now());
@@ -153,13 +155,11 @@ function authFactors(stores: AuthStores, keys: AuthKeyRing, options: AuthFactorO
     issuer: options.rpName,
     account: (userId) => authAddress(stores.users, userId),
   });
-  // Only what this deployment demands is built. A factor switched `"off"` is absent from `offered`,
-  // and every page, guard and ceremony forge serves is derived from `offered` — which is what makes
-  // an unselected factor invisible rather than merely unlinked.
-  //
-  // Declared order still decides which factor the verify page demands when two are enrolled, because
-  // forge renders no chooser.
+  // Declared order decides which factor the verify page demands when two are enrolled, because forge
+  // renders no chooser.
   const built: Record<StepUpFactor, AuthFactorService> = { "totp-app": totpFactor, passkey: passkeyFactor };
+  // Every page, guard and ceremony forge serves derives from `offered`, so a factor filtered out here
+  // is invisible rather than merely unlinked.
   const seconds = Object.entries(AUTH_SECOND_FACTORS)
     .filter(([, requirement]) => requirement !== "off")
     .map<AuthFactorOffer>(([kind, requirement]) => ({
@@ -206,7 +206,7 @@ async function buildAuthRequestServices(c: ForgeAppContext<AppEnv>): Promise<Aut
       defer,
       confirmUrl: (token) => `${config.site.url.origin}${routes.authEmailConfirm.href()}?token=${encodeURIComponent(token)}`,
     }),
-    admin: createAdminUserService({ users: stores.adminUsers }),
+    admin: stores.adminUsers,
   };
 }
 
@@ -216,9 +216,8 @@ export function authGuardGroups(dev?: DevAllowance): MiddlewareGuardGroup<AppEnv
     routes: { auth: authRouteMap, account: accountRouteMap, admin: adminRouteMap },
     auth: authIdentityOptions,
     enrolment: authEnrolmentOptions,
-    // Without this the three unauthenticated POSTs — sign-in, sign-up and sign-out — carry no
-    // cross-origin defence at all: their group declares no guards, so it is emitted for the origin
-    // check alone.
+    // The unauthenticated auth POSTs declare no guards of their own, so without this their group is
+    // emitted with no cross-origin defence at all.
     origin: originPolicy,
     rateLimit: {
       auth: authLimitPolicy(dev),

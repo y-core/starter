@@ -10,8 +10,7 @@ import { devApp } from "../../src/worker.dev";
 
 const SITE_ORIGIN = "https://example.com";
 
-/** A hostname the site origin does not name, so a siteverify answer bearing it can only pass
- *  through the dev entry point's allowance. */
+/** A hostname the site origin does not name, so a siteverify answer bearing it passes only through the dev entry's allowance. */
 const DEV_HOSTNAME = "elsewhere.example";
 
 /** One of Cloudflare's three published testing secrets — the other half of the allowance's lock. */
@@ -26,6 +25,7 @@ const BASE_TEST_CONFIG: AppConfig = {
   auth: {
     keyRing: ["9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c3d5e"],
     sessionSecret: "6f2b4a7c0d3e5f7a9b1c3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e",
+    bootstrapSecret: "3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c",
     rpName: "Forge Studio",
   },
   services: {
@@ -61,12 +61,7 @@ const EXPECTED_SUCCESS_HTML =
 const EXPECTED_EMAIL_ERROR_HTML =
   '<div class="rounded-2xl border border-status-danger-border bg-status-danger-subtle px-4 py-3 text-sm text-status-danger-subtle-foreground"><p>Something went wrong. Please try again or contact us directly.</p></div>';
 
-/**
- * The whole refusal body forge's submission pipeline renders for a body it declines: one `<li>`
- * naming the failing field and nothing else. `abortEarly` holds it to a single issue however many
- * fields a caller broke, and `describeValidationIssue` reproduces neither the submitted value nor
- * the schema's rule — so neither the issue count nor the response length is caller-steerable.
- */
+/** The whole refusal body forge's pipeline renders for a declined submission: one `<li>` naming the failing field and nothing else. */
 function refusal(field: string): string {
   return `<div class="rounded-2xl border border-status-danger-border bg-status-danger-subtle px-4 py-3 text-sm text-status-danger-subtle-foreground"><p>Please correct the following fields.</p><ul class="mt-2 list-disc ps-5"><li>${field}</li></ul></div>`;
 }
@@ -86,11 +81,11 @@ const MINIMUM_ENV = {
   TURNSTILE_SITE_KEY: "test-site-key",
   AUTH_KEY_RING: "9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c3d5e",
   SESSION_SECRET: "6f2b4a7c0d3e5f7a9b1c3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e",
+  ADMIN_BOOTSTRAP_SECRET: "3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c",
   AUTH_KV: fakeKV(),
   AUTH_DB: fakeD1(),
-  // Declared here because `wrangler.jsonc` declares it: since forge 0.1.15 an absent `RATE_LIMITER`
-  // is a 503 on the production entry rather than a skipped guard, so the minimum environment
-  // production accepts is the one that carries it. The cases that judge the limiter replace it.
+  // Present because an absent `RATE_LIMITER` is a 503 on the production entry rather than a skipped
+  // guard; the cases that judge the limiter replace it.
   RATE_LIMITER: { limit: async () => ({ success: true }) },
 } as unknown as Env;
 
@@ -253,6 +248,14 @@ describe("POST /api/contact — CSRF protection", () => {
       { method: "POST", headers: { ...HTMX_HEADERS, "X-CSRF-Token": _csrfToken, Origin: "https://evil.com" }, body: VALID_FORM.toString() },
       MINIMUM_ENV,
     );
+
+    expect(response.status).toBe(403);
+    expect(await response.text()).toBe("Forbidden");
+  });
+
+  it("returns 403 when the request carries neither Origin nor Sec-Fetch-Site", async () => {
+    const headers = { ...HTMX_HEADERS, "X-CSRF-Token": _csrfToken, "CF-Connecting-IP": CALLER_IP };
+    const response = await app.request("/api/contact", { method: "POST", headers, body: VALID_FORM.toString() }, MINIMUM_ENV);
 
     expect(response.status).toBe(403);
     expect(await response.text()).toBe("Forbidden");
@@ -450,6 +453,38 @@ describe("POST /api/contact — boundary values", () => {
     expect(await response.text()).toBe(refusal("email"));
   });
 
+  // No single check spells the address rule: the HTML living standard admits an apostrophe the old
+  // regex refused, and the domain check refuses a single-label domain the standard would accept.
+  it("accepts an apostrophe in the local part, which the HTML living standard admits", async () => {
+    const body = new URLSearchParams({
+      name: "Jane Example",
+      email: "o'brien@example.com",
+      phone: "",
+      message: "Valid message content for a digital product project.",
+      "cf-turnstile-response": "test-token",
+    });
+
+    const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(EXPECTED_SUCCESS_HTML);
+  });
+
+  it("rejects a single-label domain, which no reply could be delivered to", async () => {
+    const body = new URLSearchParams({
+      name: "Jane Example",
+      email: "ada@localhost",
+      phone: "",
+      message: "Valid message content for a digital product project.",
+      "cf-turnstile-response": "test-token",
+    });
+
+    const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
+
+    expect(response.status).toBe(422);
+    expect(await response.text()).toBe(refusal("email"));
+  });
+
   it("rejects a whitespace-only name after trimming", async () => {
     const body = new URLSearchParams({
       name: "   ",
@@ -468,9 +503,8 @@ describe("POST /api/contact — boundary values", () => {
 
 describe("POST /api/contact — XSS payloads", () => {
   it("accepts a submission with XSS chars in the name and returns the success fragment", async () => {
-    // XSS coverage lives in tests/unit/email.test.ts which captures and asserts the outgoing
-    // email body is HTML-escaped. Here we verify the HTTP response for such submissions
-    // is the static success fragment (which definitionally cannot reflect input back).
+    // The outgoing email body's escaping is `tests/unit/email.test.ts`; here it is the response,
+    // which is the static success fragment and so definitionally reflects nothing.
     const body = new URLSearchParams({
       name: "<script>alert(1)</script>",
       email: "jane@example.com",
@@ -505,9 +539,8 @@ describe("POST /api/contact — Turnstile verification", () => {
   const makeRequest = (body: URLSearchParams) =>
     new Request("https://example.com/api/contact", { method: "POST", headers: HTMX_HEADERS, body: body.toString() });
 
-  // A tripped bot guard now answers in the *shape* of a validation refusal — same status, same
-  // one-`<li>` body naming the schema's first declared field, never the guard — so a bot cannot
-  // read which guard it hit off the response. Assert the status, not a guard-specific message.
+  // A tripped bot guard answers in the shape of a validation refusal so a bot cannot read which
+  // guard it hit, which is why the status is asserted and never a guard-specific message.
   it("refuses with 422 when the cf-turnstile-response token is missing", async () => {
     const c = createTestContext<AppEnv, AppConfig>(makeRequest(VALID_FORM), { env: {} as AppEnv, config: BASE_TEST_CONFIG });
     const response = await contactAction(c);
@@ -564,9 +597,8 @@ describe("POST /api/contact — Turnstile verification", () => {
   });
 });
 
-// Two locks, and neither opens alone: the allowance only the dev entry can mint, and one of
-// Cloudflare's published testing secrets. Every case below shares the siteverify answer, so what
-// separates them is exactly the pair — a regression relaxing either half on its own fails here.
+// Every case below shares one siteverify answer, so what separates them is exactly the lock: the
+// dev-only allowance and a published testing secret, neither of which opens alone.
 describe("POST /api/contact — the Turnstile testing-secret allowance", () => {
   const TESTING_ENV = { ...MINIMUM_ENV, TURNSTILE_SECRET_KEY: TESTING_SECRET } as unknown as Env;
 
@@ -658,9 +690,8 @@ describe("POST /api/contact — rate limiting", () => {
     expect(response.status).toBe(503);
   });
 
-  // The binding is not optional on the production entry — an absent one is a limiter that silently
-  // stopped limiting, which fails closed. The dev entry's allowance is the only thing that degrades
-  // it, so the two cases below share every input but the entry point.
+  // An absent binding is a limiter that silently stopped limiting, so production fails closed and
+  // only the dev entry's allowance degrades it — these cases share every input but the entry point.
   it("returns 503 when the RATE_LIMITER binding is absent on the production entry", async () => {
     const { RATE_LIMITER: _limiter, ...env } = MINIMUM_ENV as unknown as Record<string, unknown>;
 
@@ -688,9 +719,8 @@ describe("POST /api/contact — rate limiting", () => {
 });
 
 describe("POST /api/contact — body-read semantics", () => {
-  // `formToObject` leaves an absent field absent rather than substituting `""` (the removed
-  // `readFields` did the latter). A non-optional `phone` would therefore 422 every submission that
-  // omits the optional input — this is the test that catches it.
+  // `formToObject` leaves an absent field absent rather than substituting `""`, so a non-optional
+  // `phone` would 422 every submission that omits the optional input.
   it("succeeds when the optional phone field is absent entirely", async () => {
     const body = new URLSearchParams({
       name: "Jane Example",
@@ -719,9 +749,18 @@ describe("POST /api/contact — body-read semantics", () => {
     expect(await response.text()).toBe(refusal("email"));
   });
 
-  // The strict schema declares only the four real fields. Everything else the form posts is dropped
-  // because a guard consumed it: `_csrf` via `csrfFieldCtx`, and the Turnstile token because the
-  // action named it. An undeclared extra is a refusal, not a silent drop.
+  it("refuses an inherited name rather than letting it reach the parsed object", async () => {
+    const body = new URLSearchParams(VALID_FORM_WITH_TOKEN);
+    body.set("__proto__", "polluted");
+
+    const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: body.toString() }, MINIMUM_ENV);
+
+    expect(response.status).toBe(422);
+    expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
+  });
+
+  // Everything the form posts beyond the schema is dropped only because a guard consumed it — `_csrf`
+  // via `csrfFieldCtx`, the Turnstile token because the action named it.
   it("refuses an undeclared field", async () => {
     const body = new URLSearchParams(VALID_FORM_WITH_TOKEN);
     body.set("role", "admin");
@@ -734,10 +773,9 @@ describe("POST /api/contact — body-read semantics", () => {
 });
 
 describe("contact form — view ↔ schema contract", () => {
-  // Replaces the old rendered-field-names test. Crafted-body tests structurally cannot see view↔
-  // handler drift: they post whatever the test author typed. This one reads what the page actually
-  // renders and holds it against what the schema actually declares.
-  it("renders exactly the fields the schema declares, plus the two guard-consumed ones", async () => {
+  // A crafted body structurally cannot see view↔handler drift — it posts whatever the author typed —
+  // so this reads what the page renders and holds it against what the schema declares.
+  it("renders exactly the fields the schema declares, plus the guard-consumed ones", async () => {
     const res = await app.request("/", {}, MINIMUM_ENV);
     const html = await res.text();
 
@@ -781,9 +819,6 @@ describe("POST /api/contact — edge cases", () => {
   });
 });
 
-// The viewer's `access` predicate reads the dev allowance, which only `worker.dev.ts` mints — so the
-// entry is the gate here, and the environment is the same either way. That is the point: no env var
-// a production deployment could set opens the page, so `app` is refused and `devApp` is admitted.
 // A fresh `fakeKV` per request: it is a working namespace, so the request logger's own entry would
 // otherwise accumulate across cases and the empty-state assertions would depend on test order.
 const logsEnv = () => ({ ...MINIMUM_ENV, LOGS_KV: fakeKV() }) as unknown as Env;
@@ -810,9 +845,8 @@ describe("GET /showcase/logs — full page", () => {
     expect(res.status).toBe(200);
   });
 
-  // The viewer builds no document of its own: it renders through the shell `worker.ts` registers, so
-  // the page arrives inside the chrome that carries the dark class and the pre-paint theme script.
-  // The `<title>` composes the mount's own page title with the site's.
+  // A viewer owning its own shell would reach neither the dark class nor the pre-paint theme script,
+  // and would render light whatever its components ask for.
   it("renders the viewer inside the app's Layout, not a shell of forge's own", async () => {
     const res = await devApp.request("/showcase/logs", {}, logsEnv());
     const text = await res.text();
@@ -875,5 +909,33 @@ describe("POST /api/contact — email delivery failure", () => {
     } finally {
       globalThis.fetch = savedFetch;
     }
+  });
+
+  // The provider echoes the recipient address back in its rejection body, which `src/services/email.ts`
+  // logs structurally — so this is the path a real address takes towards the store that outlives it.
+  it("keeps the rejected provider body out of the KV log store (BOUNDARIES §4a)", async () => {
+    const savedFetch = globalThis.fetch;
+    const rejection = `no such mailbox: ${VALID_FORM_WITH_TOKEN.get("email")}`;
+    globalThis.fetch = async (url, ...args) => {
+      if (url.toString() === EMAIL_API_URL) return new Response(rejection, { status: 503 });
+      if (url.toString() === TURNSTILE_URL) return new Response(JSON.stringify({ success: true, hostname: "example.com" }));
+      return savedFetch(url, ...args);
+    };
+
+    const kv = fakeKV();
+    try {
+      const response = await app.request("/api/contact", { method: "POST", headers: postHeaders(), body: VALID_FORM_WITH_TOKEN.toString() }, {
+        ...MINIMUM_ENV,
+        LOGS_KV: kv,
+      } as unknown as Env);
+      expect(response.status).toBe(500);
+    } finally {
+      globalThis.fetch = savedFetch;
+    }
+
+    const stored = await Promise.all((await kv.list()).keys.map(async (entry) => (await kv.get(entry.name, { type: "text" })) ?? ""));
+    expect(stored.length).toBeGreaterThan(0);
+    expect(stored.join("\n")).not.toContain(rejection);
+    expect(stored.some((record) => record.includes('"body":"[redacted]"'))).toBe(true);
   });
 });

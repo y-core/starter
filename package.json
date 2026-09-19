@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "packageManager": "bun@1.4.0",
   "scripts": {
     "build:assets": "forge assets build all --minify --root . --config config/assets.ts --out .forge/assets.ts",
     "cf:status": "forge cf sync",
@@ -25,24 +26,24 @@
     "test:browser": "playwright test",
     "types:assets": "forge verify --only types:assets",
     "verify": "forge verify",
-    "verify:fast": "forge verify --mode fast",
-    "verify:full": "forge verify --full"
+    "verify:full": "forge verify --full",
+    "verify:quality": "forge verify --mode quality"
   },
   "dependencies": {
-    "@y-core/forge": "https://github.com/y-core/forge/releases/download/v0.1.16/y-core-forge-0.1.16.tgz"
+    "@y-core/forge": "https://github.com/y-core/forge/releases/download/v0.2.2/y-core-forge-0.2.2.tgz"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.0",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/cli": "^4.3.3",
-    "esbuild": "^0.28.1",
-    "oxfmt": "0.67.0",
-    "oxlint": "1.82.0",
+    "esbuild": "^0.28.2",
+    "oxfmt": "0.68.0",
+    "oxlint": "1.83.0",
     "oxlint-tsgolint": "7.0.2001",
-    "sharp": "^0.35.2",
+    "sharp": "^0.35.4",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "urlpattern-polyfill": "^10.1.0",
-    "wrangler": "^4.129.1"
+    "wrangler": "^4.134.0"
   },
   "overrides": {
     "ws": "^8.20.1"

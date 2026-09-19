@@ -1,19 +1,4 @@
-/** The retrieval set `warden:queries` holds this repository's knowledge index to.
- *
- *  Forge ships a golden set written for its own corpus, where the documents are `libs` and the
- *  vocabulary is a library's. Starter is subject to the `apps` canon, so that set leaves every
- *  `apps` document top-1 for nothing and half its expectations naming files that do not exist here.
- *  These replace it.
- *
- *  **Two corpora, because this app has no documents of its own.** Every rule binding it is the
- *  canon's, forge's own advisory `docs/`, or a budgeted comment at the code it governs — so a
- *  `project:` expectation would name a file that no longer exists.
- *
- *  **A query earns its place by failing when retrieval stops serving it, not by passing today.**
- *  Every canon document must be top-1 for at least one query — that assertion is what stops the set
- *  decaying into a fixture nobody rereads. The installed library's documents are held by the last
- *  entries alone: the coverage assertion never reaches them.
- */
+/** The retrieval set `warden:queries` holds this repository's knowledge index to. */
 
 import type { GoldenQuery } from "@y-core/forge/warden";
 
@@ -29,7 +14,7 @@ export const GOLDEN: readonly GoldenQuery[] = [
   { query: "how should an error cross a layer", expect: "canon:ERROR_HANDLING.md#2b", dimension: "boundary" },
   { query: "when should I upstream a capability to the shared library", expect: "canon:FORGE_CONSUMPTION.md#3c", dimension: "procedure" },
   { query: "exact match assertions on markup", expect: "canon:TESTING.md#3a", dimension: "prohibition" },
-  { query: "what runs after the response is sent on Workers", expect: "canon:WORKERS_PLATFORM.md#2b", dimension: "rationale" },
+  { query: "what happens to an error thrown in waitUntil", expect: "canon:WORKERS_PLATFORM.md#2b", dimension: "rationale" },
   { query: "one request at a time in a recycled isolate", expect: "canon:WORKERS_PLATFORM.md#1a", dimension: "rationale" },
   { query: "the single home rule for a governing document", expect: "canon:AGENT_GUIDE.md#8", dimension: "prohibition" },
   { query: "which suffix reports a command exit status", expect: "canon:AGENT_WORKFLOW.md#3", dimension: "procedure" },
@@ -37,11 +22,8 @@ export const GOLDEN: readonly GoldenQuery[] = [
   { query: "which oxlint type-aware rules are the shared base", expect: "canon:CONFIG_BASELINE.md#2a", dimension: "boundary" },
   { query: "which tsconfig strictness flags must every repository set", expect: "canon:CONFIG_BASELINE.md#1", dimension: "procedure" },
 
-  // The installed library's own documents, served here because the warden rows pass `dependency`.
-  // The coverage assertion reaches only the canon, so nothing but these holds the third corpus: a
-  // question whose answer is the library's and nowhere else, one per shape of that question. Every
-  // question this app's own `docs/` used to be asked now resolves here or in the canon, which is
-  // why it had none worth keeping.
+  // The coverage assertion reaches only the canon, so these entries are the whole of what holds the
+  // installed library's corpus — dropping one retires a document from the index unnoticed.
   { query: "status to level mapping for a log record", expect: "dependency:forge/STRUCTURED_LOGGING.md#4a", dimension: "procedure" },
   // A placement question resolves here because the mechanism is the library's — the
   // `createController` action object, which is also where a route's guards are declared.
@@ -56,13 +38,10 @@ export const GOLDEN: readonly GoldenQuery[] = [
   { query: "what does buildTheme produce", expect: "dependency:forge/THEME_GENERATION.md#2a", dimension: "procedure" },
 ];
 
-/** Questions no document here governs, so retrieval must return nothing rather than a confident
- *  neighbour. Each names a real concern this application simply does not have. @public */
+/** Questions no document here governs, so retrieval must return nothing rather than a neighbour. @public */
 export const NEGATIVE: readonly string[] = [
-  // Not "how do I configure a payment webhook retry": the library's `SECURITY_HARDENING.md` governs
-  // webhook signature verification, so `webhook` is vocabulary this corpus now carries and the
-  // question is no longer one it has no words for. An entry that stops meeting that precondition is
-  // replaced rather than answered by moving the floor.
+  // An entry only refuses while the corpus has no words for it: "payment webhook retry" stopped
+  // qualifying once the library's `SECURITY_HARDENING.md` brought `webhook` into the vocabulary.
   "what is the payroll tax withholding schedule",
   "how is a mobile push notification token refreshed",
   "which grpc interceptor handles tracing",

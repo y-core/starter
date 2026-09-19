@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 
 import { fakeD1, fakeKV, mockExecutionContext } from "@y-core/forge/testing";
 
+import { routes } from "../../src/routes";
 import worker, { app } from "../../src/worker";
 import { sqliteD1 } from "../sqlite-d1";
 
@@ -19,6 +20,7 @@ const MINIMUM_ENV = {
   TURNSTILE_SITE_KEY: "test-site-key",
   AUTH_KEY_RING: "9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c3d5e",
   SESSION_SECRET: "6f2b4a7c0d3e5f7a9b1c3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e",
+  ADMIN_BOOTSTRAP_SECRET: "3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c",
   AUTH_KV: fakeKV(),
   AUTH_DB: fakeD1(),
 } as unknown as Env;
@@ -29,15 +31,25 @@ describe("the worker module", () => {
     expect(typeof worker.scheduled).toBe("function");
   });
 
+  // `AUTH_DB` and `AUTH_KV` are declared without `optional`, unlike the two KV bindings beside them:
+  // auth degraded into a no-op guard is worse than auth refusing (`BOUNDARIES.md` §5).
+  for (const binding of ["AUTH_DB", "AUTH_KV"] as const) {
+    it(`refuses to serve rather than degrading when the ${binding} binding is absent`, async () => {
+      const { [binding]: _absent, ...env } = MINIMUM_ENV as unknown as Record<string, unknown>;
+
+      const res = await app.request("/", {}, env as unknown as Env);
+
+      expect(res.status).toBe(500);
+    });
+  }
+
   it("serves a request through the named app", async () => {
     const res = await worker.fetch(new Request("https://example.com/"), MINIMUM_ENV, mockExecutionContext());
     expect(res.status).toBe(200);
   });
 
-  // Against this repository's own migration in real SQLite, so what survives the run is decided by
-  // the database rather than by a statement the test copied out of the library. The handler's own
-  // promise is awaited rather than a `waitUntil` queue drained, because that promise is what the
-  // cron run's outcome is computed from — and what the purge's throw has to land inside.
+  // Real SQLite over this repository's own migration, so the database decides what survives rather
+  // than a statement copied out of the library.
   it("reclaims the expired challenge and nonce rows on a scheduled run, and leaves the live ones", async () => {
     const db = sqliteD1();
     const past = Date.now() - 60_000;
@@ -154,8 +166,8 @@ describe("GET /* (404 catch-all)", () => {
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
   });
 
-  // The three paths that reach the one `notFound` hook: an asset miss (above), an absent binding,
-  // and a method the asset catch-all does not serve. `assets` picks the code path, never the answer.
+  // Each path into the one `notFound` hook is exercised separately, because `assets` picks the code
+  // path and must never pick the answer.
   it("renders the same page when the ASSETS binding is absent", async () => {
     const res = await app.request("/unknown-page", {}, { ...MINIMUM_ENV, ASSETS: undefined } as unknown as Env);
     expect(res.status).toBe(404);
@@ -171,5 +183,22 @@ describe("GET /* (404 catch-all)", () => {
   it("never echoes the request path", async () => {
     const res = await app.request("/unknown-page-echo-probe", {}, { ...MINIMUM_ENV, ASSETS: MOCK_ASSETS_404 });
     expect(await res.text()).not.toContain("unknown-page-echo-probe");
+  });
+
+  // This app declines `methodMismatch: "advertise"`, so the property under test is that the two
+  // answers are indistinguishable — a prober learns no URL from the difference.
+  it("answers a wrong method on a registered URL exactly as it answers an unregistered URL", async () => {
+    const env = { ...MINIMUM_ENV, ASSETS: MOCK_ASSETS_404 };
+    const mismatch = await app.request(routes.health.href(), { method: "DELETE" }, env);
+    const unregistered = await app.request("/no-such-url", { method: "DELETE" }, env);
+
+    // The per-request CSP nonce is the one byte-level difference a prober can already see on any
+    // two responses, so it is normalized out rather than weakening the comparison to a substring.
+    const withoutNonce = (html: string) => html.replaceAll(/nonce="[^"]*"/g, 'nonce=""');
+
+    expect(mismatch.status).toBe(404);
+    expect(mismatch.status).toBe(unregistered.status);
+    expect(mismatch.headers.get("allow")).toBeNull();
+    expect(withoutNonce(await mismatch.text())).toBe(withoutNonce(await unregistered.text()));
   });
 });

@@ -7,15 +7,10 @@ import type { NavDefinition } from "@y-core/forge/ui/chrome";
 import { authWebPaths } from "../app/auth";
 import { routes } from "../routes";
 
-/**
- * Route-map keys used by `primaryNav`, each resolved to a URL below. `contact` resolves to the home
- * route plus a fragment rather than to a route of its own — `/api/contact` is POST-only, not a page
- * — which forge's own docs sanction: `resolveHref`'s return need not be a route
- * (`@y-core/forge/src/ui/design/reference/08-navigation.md:33-35`). The route half is what a bare
- * `#contact` lacked: the bar is in the shared layout, so it is rendered on pages that have no
- * `#contact` section of their own.
- */
+/** Every route-map key `primaryNav` names, resolved to the URL it renders as. */
 const NAV_HREFS: Record<string, string> = {
+  // The bar is in the shared layout, so a bare `#contact` would point at nothing on a page that has
+  // no contact section; `resolveHref` need not return a route.
   contact: `${routes.home.href()}#contact`,
   showcaseUi: routes.showcase.ui.index.href(),
   showcaseTheme: routes.showcase.ui.theme.href(),
@@ -36,9 +31,8 @@ export const primaryNav: NavDefinition = {
     {
       items: [
         {
-          // Never name this "Menu": forge hard-codes `aria-label='Menu'` on the mobile toggle
-          // (`ui/chrome/navbar.tsx`), and this trigger renders inside that toggle's panel — two
-          // nested controls sharing one name.
+          // Never name this "Menu": forge hard-codes `aria-label='Menu'` on the mobile toggle whose
+          // panel this trigger renders inside, and two nested controls must not share one name.
           label: "Showcase",
           items: [
             { label: "Logs", href: "showcaseLogs" },
@@ -47,10 +41,8 @@ export const primaryNav: NavDefinition = {
           ],
         },
         {
-          // Sign-out is a POST, so it enters as a slot rather than a link — a `NavLink` announces a
-          // destination, which an action is not (rule:forge-ui-nav-slot-not-link).
-          // Nothing here names a factor: which second factor a deployment demands is a switch
-          // (`AUTH_SECOND_FACTORS`), and a nav entry naming one would advertise it while off.
+          // Naming a second factor here would advertise one `AUTH_SECOND_FACTORS` may have switched
+          // off, so the entries name only the pages every deployment serves.
           label: "Account",
           items: [
             { label: "Sign in", href: "authSignin", filters: [AUTH_NAV_FILTERS.anonymous] },

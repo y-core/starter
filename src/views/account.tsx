@@ -26,9 +26,6 @@ const AccountDate: FC<{ at: number }> = ({ at }) => {
   );
 };
 
-// Design Read: a signed-in visitor checking what their account is and what can sign it in; the one
-// action is opening the sign-in methods; failure is a store that is down, which the fetched panel's
-// own route answers with rather than this page.
 /** The page a completed sign-in lands on: who you are, what signs you in, and the action that ends the session. */
 export const AccountView: FC<AccountViewProps> = ({
   email,

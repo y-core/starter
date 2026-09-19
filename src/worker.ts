@@ -11,17 +11,14 @@ import type { AppEnv } from "./app/types";
 import { notFoundController } from "./controllers/not-found";
 import { registerRoutes } from "./router";
 
-/** Builds the Forge app with a fixed CSP. The caller decides the policy, and whether a development
- *  allowance rides along — `DevAllowance` is named at type only, so this module cannot mint one. */
+/** Builds the Forge app against the CSP and development allowance the calling entry point decides. */
 export function createWorker(security: SecurityHeadersOptions, dev?: DevAllowance) {
   const app = createApp<AppEnv>({
     config: configStore,
     shell: appShell,
     notFound: notFoundController,
-    // The error boundary prints the thrown message only under a development entry's `errorDetail`.
-    // It was an env check (`LOG_LEVEL`) until forge 0.1.15, which is the shape a production
-    // deployment could switch on by setting a variable; a token the production bundle cannot mint
-    // is the one that cannot.
+    // A token rather than an env check, so no production deployment can switch the error boundary's
+    // detail on by setting a variable — the production bundle holds nothing that could mint one.
     ...(dev === undefined ? {} : { dev }),
   });
   registerMiddleware(app, security, dev);

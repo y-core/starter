@@ -1,11 +1,4 @@
-/**
- * The showcase mount, as far as this repository owns it.
- *
- * What the demo pages render — the fixture data, the validation copy, the pagination — belongs to
- * the library that ships `showcaseRoutes()`, and is tested there. What is this repository's is
- * narrower and is all that is here: that the literal paths in `routes.ts` are the paths
- * `showcasePaths()` derives, and that the mount is reachable through this app's own guard stack.
- */
+/** The showcase mount as far as this repository owns it: its paths, and its reachability through this app's guards. */
 import { describe, expect, it } from "bun:test";
 
 import { fakeD1, fakeKV } from "@y-core/forge/testing";
@@ -23,6 +16,7 @@ const MINIMUM_ENV = {
   TURNSTILE_SITE_KEY: "test-turnstile-site-key",
   AUTH_KEY_RING: "9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c3d5e",
   SESSION_SECRET: "6f2b4a7c0d3e5f7a9b1c3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e",
+  ADMIN_BOOTSTRAP_SECRET: "3d5e9c1c1c5f57bd50b8b2df5b6d5a51c5cb3a8e9d1e6f2b4a7c0d3e5f7a9b1c",
   AUTH_KV: fakeKV(),
   AUTH_DB: fakeD1(),
 } as unknown as Env;

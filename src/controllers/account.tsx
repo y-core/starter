@@ -18,9 +18,8 @@ interface AccountData {
   signoutToken: string;
 }
 
-// This app owns the page a signed-in visitor lands on, rather than forge's passkey list: the second
-// factor is a switch here (`AUTH_SECOND_FACTORS`), and a landing page belonging to one of the factors
-// would break the moment that switch stops naming it.
+// Not forge's passkey list: the second factor is a switch here, and a landing page belonging to one
+// factor breaks the moment `AUTH_SECOND_FACTORS` stops naming it.
 export const accountController = definePage<AppEnv, AppConfig, AccountData>({
   cache: "no-store",
   loader: async (c, _config) => {
