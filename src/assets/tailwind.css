@@ -4,12 +4,10 @@
 @import "@y-core/forge/ui/assets/css/tailwind.css";
 @import "./css/custom.css";
 
-/* Forge's own `@source` paths cover the components every app renders. The two opt-in surfaces:
-   the log viewer, and the component showcase this starter serves. Both are bare directories, the
-   form forge documents — a glob narrowed to `.tsx` would miss the class strings in their
-   `.ts` files. */
+/* Forge's own `@source` paths cover the components every app renders. Two opt-in surfaces: the
+   log viewer and the auth pages. Each is a bare directory, the form forge documents — a glob
+   narrowed to `.tsx` would miss the class strings in their `.ts` files. */
 @source "../../node_modules/@y-core/forge/src/logging";
-@source "../../node_modules/@y-core/forge/src/ui/show";
 @source "../../node_modules/@y-core/forge/src/auth";
 
 @theme {

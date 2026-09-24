@@ -4,6 +4,9 @@
 > the shared library is sufficient for a Worker app on its own. fetch-router over Tailwind v4 and
 > HTMX, rendered SSR; static assets in `public/` are served by Wrangler.
 
+While `config/features.ts` exists, this working tree is the **demonstrator**: the starter plus the
+optional features that manifest lists.
+
 Every forge application's constitution carries the same sections in the same order, and they open on
 the fleet's shared spine: the **Behavioral Rules**, then the **Governance Router** that decides where
 a sentence is allowed to live. A paragraph that begins _This application adds_ or _This application
@@ -92,8 +95,8 @@ never the body itself (`AGENT_GUIDE.md` §10).
   question a set answers, each its own gate row:** `tests/unit/` a module in isolation, `tests/seam/`
   driven through the composition root, `tests/workerd/` under a real wrangler process,
   `tests/browser/` under a real browser. A new spec goes in the one whose question it answers, and
-  its filename matches the source file it covers; `tests/setup.ts` and `tests/sqlite-d1.ts` are
-  shared by every directory and stay at the root
+  its filename matches the source file it covers; `tests/setup.ts` is shared by every directory and
+  stays at the root
 
 ---
 
@@ -182,17 +185,20 @@ hand-written stub).
 
 `quality` is every static row, so it is the whole of the dev loop. `standard` adds what has to run
 something — `test:unit`, `test:seam`, `validate-comment-budget` and the `warden:*` rows — and `full`
-adds `db:schema`, `test:browser` and `test:workerd`. `quality` also relaxes one tolerance:
+adds `test:browser` and `test:workerd`. `quality` also relaxes one tolerance:
 `validate-asset-manifest` accepts a types-only `.forge/assets.ts` there and fails it under
 `standard` and `full`, because a manifest nothing has built is exactly what a run closing a task
 must catch.
 
+While `config/features.ts` exists, `full` also runs `validate-features`, and the table takes the
+`features` and `importBoundary` opt-ins.
+
 The table is near-pure `cloudflareWorkerSteps()` from `@y-core/forge/tooling/gate` — this app is the
 fleet's proof that the preset is sufficient for a Worker app, so a row that the preset does not emit
-is a bug report against the preset rather than a local convenience. It takes every opt-in the preset
-offers but one: **`jsx` is deliberately declined**, because that row holds each `.tsx` to a per-file
-pragma pair — a library's problem, its files compiling under each consumer's tsconfig, where this
-app's compile under its own and `tsconfig.json` states `jsxImportSource` once.
+is a bug report against the preset rather than a local convenience. **`jsx` is the one opt-in
+deliberately declined**, because that row holds each `.tsx` to a per-file pragma pair — a library's
+problem, its files compiling under each consumer's tsconfig, where this app's compile under its own
+and `tsconfig.json` states `jsxImportSource` once.
 
 The appended rows are not such a bug report. The warden ones — `validate-docs`, `warden:index`,
 `warden:queries`, `warden:duplicates` — come from `wardenAppSteps()` in
@@ -205,14 +211,20 @@ because only the app knows which of its directories the budget is scanned over �
 `tests` here.
 
 Some preset options carry data this repository owns, and each is stated at the call site rather than
-defaulted: `exposure` demands `require: "unroutable"` — the keys it names must hold the values that
-keep the Worker off the public internet, not merely be stated; `ssrBoundary` names `src/client` as
-the browser-only tree and `main.ts` as the one basename allowed to cross it; `contrast` audits
-forge's pairs against **this app's** palette, with `config/contrast.ts` carrying the exemption
-`src/assets/css/custom.css` invalidates by re-declaring the gray ramp; and `markdown` names the
-prose this repository holds to a layout, in `config/markdown.ts`. That last one is paired with
-`"**/*.md"` in `.oxfmtrc.json`'s `ignorePatterns`, and the pairing is load-bearing rather than
-tidiness: oxfmt and `validate-markdown` would otherwise own the same bytes and disagree about them.
+defaulted:
+
+- `exposure` demands `require: "unroutable"` — the keys it names must hold the values that keep the
+  Worker off the public internet, not merely be stated.
+- `ssrBoundary` names `CLIENT_DIRS` in `config/steps.ts` as the browser-only trees and `main.ts` as
+  the one basename allowed to cross into them.
+- `contrast` audits forge's pairs against **this app's** palette, with `config/contrast.ts` carrying
+  the exemption `src/assets/css/custom.css` invalidates by re-declaring the gray ramp.
+- `markdown` names the prose this repository holds to a layout, in `config/markdown.ts`. It is paired
+  with `"**/*.md"` in `.oxfmtrc.json`'s `ignorePatterns`, and the pairing is load-bearing rather than
+  tidiness: oxfmt and `validate-markdown` would otherwise own the same bytes and disagree about them.
+
+- `importBoundary`, taken while `config/features.ts` exists, guards each slice's `src/<feature>/`
+  against every file outside it save the crossings it names.
 
 ---
 
@@ -246,11 +258,72 @@ second copy drifts silently, and this repository has already paid that cost once
 **This application adds:**
 
 - `src/worker.ts` also exports the app by name, so a test reaches `app.request` without the module
-  wrapper, and its default export is a module object rather than the app — `scheduled` is a second
-  entry point and has nowhere else to live.
+  wrapper, and its default export is a module object rather than the app.
 - `src/worker.dev.ts` layers the Wrangler live-reload script hash onto that CSP, so the reload hash
   cannot leak into production by construction.
 
+- **Optional features are vertical slices, and `config/features.ts` is their one list while it
+  exists.** Each owns its `src/<feature>/`, which mirrors the layer names inside itself, and its specs
+  in `tests/<set>/<feature>/`. It also owns lines in the seam files the manifest names, each ending in
+  a `feature:<feature>` comment or enclosed in a `begin`/`end` region, and a marker names one feature
+  only: a capability two features share is a feature both require. `bunx forge curate --list` prints
+  that graph, `--keep` and `--drop` curate a copy through it, and `validate-features` gates the
+  skeleton each default profile leaves. A slice may import the core and the slices it requires. The
+  core never imports a slice, save the crossings `importBoundary.crossings` names in
+  `config/steps.ts`, which `validate-import-boundary` holds. Each slice's `register*` call sits
+  between `registerRoutes` and `applyAssets`, and it contributes to the navbar, the home page and the
+  health route through `PrimaryNav`, `HomeSlots` and `HealthSlots` rather than being imported by them;
+  its bindings, session and guards reach the one global chain as a `MiddlewareContribution` passed
+  to `registerMiddleware`.
+
+<!-- feature:showcase:begin -->
+
+- **`src/showcase/`**: demonstrations of forge capabilities go here, in the layer directory their
+  concern belongs to; `src/showcase/model/` holds constants shared by its SSR views and client code;
+  `src/showcase/client` is in `ssrBoundary.clientDirs` beside `src/client`.
+
+<!-- feature:showcase:end -->
+<!-- feature:contact:begin -->
+
+- **`src/contact/`**: the enquiry form, and the enquiry it composes and hands to the email slice; it
+  contributes a home section, hero CTAs, a bar link and a footer link.
+
+<!-- feature:contact:end -->
+<!-- feature:email:begin -->
+
+- **`src/email/`**: the MailChannels service and the `EMAIL_*` configuration; it joins its config
+  entries into `src/app/config.ts` by an `Object.assign` statement, the slice's one crossing.
+
+<!-- feature:email:end -->
+<!-- feature:turnstile:begin -->
+
+- **`src/turnstile/`**: the `TURNSTILE_*` configuration, joined into `src/app/config.ts` by an
+  `Object.assign` statement; the widget origins in the production CSP are its lines in that file.
+
+<!-- feature:turnstile:end -->
+<!-- feature:auth:begin -->
+
+- **`src/auth/`**: sign-in, the account and admin pages, and forge's auth groups; it contributes its
+  `AUTH_KV` binding, the session and its guard groups to the global chain, the Account menu to the
+  navbar, and its config entries to `src/app/config.ts` by an `Object.assign` statement. Its purge
+  runs on the worker module's `scheduled` member — a second entry point, which has nowhere else to
+  live.
+
+<!-- feature:auth:end -->
+<!-- feature:db:begin -->
+
+- **`src/db/`**: the `DB` binding and schema monitor it contributes to the global chain, and the
+  schema check it contributes to the health route; `config/db/` holds its migrations, seeds and
+  snapshot, which a curated copy composes afresh. It adds the `db:schema` row to `full`.
+
+<!-- feature:db:end -->
+<!-- feature:rate-limit:begin -->
+
+- **`src/rate-limit/`**: the one `rateLimitPolicy` every limited route shares, and the optional
+  `RATE_LIMITER` binding it contributes to the global chain; only the dev entry's allowance lets
+  that binding be absent.
+
+<!-- feature:rate-limit:end -->
 ---
 
 ## Growth Rules
@@ -271,7 +344,7 @@ goes is read off the file that already holds one of its kind** — open the neig
 | a configured scalar or a new binding | `src/app/config.ts`, read through the validated accessor | `APP_ARCHITECTURE.md` §3a |
 | client behaviour | a mounted scope in `src/client/`, registered from `main.ts` | `BOUNDARIES.md` §1b |
 | a theme token | `src/assets/tailwind.css` — registered, never inlined | `FORGE_CONSUMPTION.md` §5b |
-| a schema change | `config/schema.sql`, then `forge db migrate compose` — never hand-written | — |
+| a schema change | `config/schema.sql`, listed in `config/db.ts`'s `schemas` with the first table, then `forge db migrate compose` — never hand-written | — |
 | a test | `tests/`, in the set decided by what the test needs | `TESTING.md` §2a |
 | a build-time config module — assets, gate step table | `config/` — outside `tsconfig.json`'s `include` | `CONFIG_BASELINE.md` §3 |
 | a capability a second application would want | upstream in `@y-core/forge`, not a local helper | `FORGE_CONSUMPTION.md` §3a |
@@ -309,9 +382,12 @@ thing to know.
   global scope, which is exactly what `"types": []` withholds from the Worker. Those modules are
   still linted and formatted, via `sources` in the step table
 
-**Forge is pinned to a released tarball** — a GitHub Release asset in `package.json`, built by
-forge's `release` workflow with `bun pm pack`, so `files` in forge's manifest is the single thing
-deciding what arrives here. `bun i` always restores exactly that, and the lock carries its `sha512`.
+**Forge is pinned to a released tarball** — forge's GitHub Release asset, built by its `release`
+workflow with `bun pm pack`, so `files` in forge's manifest is the single thing deciding what arrives
+here. `package.json` fetches it through `pkg-forge.ysite.workers.dev`, which relays only that
+repository's release assets, at the same path, so the one URL resolves in a devbox (where GitHub is
+not reachable) and in Cloudflare builds alike. `bun i` always restores exactly that, and the lock
+carries its `sha512`, so a changed file fails the install.
 
 **Never point this at a `codeload.github.com` URL instead.** That serves a git snapshot of the tag,
 which honours no manifest: it ships forge's `tests/`, `config/` and `tsconfig.json` along with

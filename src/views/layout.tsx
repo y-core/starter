@@ -12,17 +12,18 @@ import { Separator } from "@y-core/forge/ui/core";
 import type { RenderContext } from "../app/types";
 import { site, siteMeta } from "../model/site.content";
 import { routes } from "../routes";
-import { primaryNav, resolveNavHref } from "./nav";
+import type { PrimaryNav } from "./nav";
 
 interface LayoutProps {
   ctx: RenderContext;
   /** Merged over `siteMeta`; the shell is the only caller, and a `ShellSlot` always resolves one. */
   meta: PageMeta;
+  primaryNav: PrimaryNav;
   children?: JSXNode | undefined;
 }
 
 // Composed here rather than by each caller: a page states the thing it is, and which site it belongs
-// to is the shell's fact — including for the auth, showcase and log pages, whose titles forge writes.
+// to is the shell's fact — including for the auth and log pages, whose titles forge writes.
 /** A page's title as the document carries it, the site's own left uncomposed. */
 function documentTitle(title: string): string {
   return title === site.title ? title : `${title} — ${site.title}`;
@@ -33,12 +34,13 @@ function hidden(robots: PageMeta["robots"]): boolean {
   return robots === "noindex" || (Array.isArray(robots) && robots.includes("noindex"));
 }
 
-export function Layout({ ctx, meta, children }: LayoutProps) {
+export function Layout({ ctx, meta, primaryNav, children }: LayoutProps) {
   const { nonce, baseUrl } = ctx;
   const { canonical, ...merged } = mergeMeta(siteMeta(baseUrl), meta);
   // The base names the site root, which on a `noindex` page would point a crawler at a URL other
   // than the one it was just told to drop. Dropped here, so no page has to restate it.
   const canonicalLink = hidden(merged.robots) || canonical === undefined ? {} : { canonical };
+  const footerLinks = primaryNav.footer();
   return (
     <html lang='en'>
       <head>
@@ -85,8 +87,8 @@ export function Layout({ ctx, meta, children }: LayoutProps) {
               <Navbar
                 id='primary-nav'
                 aria-label='Primary'
-                config={primaryNav}
-                resolveHref={resolveNavHref}
+                config={primaryNav.definition()}
+                resolveHref={primaryNav.resolveHref}
                 activeFilters={ctx.nav.activeFilters}
                 slots={ctx.nav.slots}
                 icon={CoreIcon}
@@ -108,11 +110,15 @@ export function Layout({ ctx, meta, children }: LayoutProps) {
                 <p class='font-serif text-lg font-semibold text-card-foreground'>{site.footer.entity}</p>
                 <p class='mt-1 text-sm text-muted-foreground'>Digital Product Studio</p>
               </div>
-              <nav class='flex flex-wrap justify-center gap-6 text-sm' aria-label='Footer'>
-                <a href='#contact' class='text-muted-foreground hover:text-foreground motion-safe:transition'>
-                  Contact
-                </a>
-              </nav>
+              {footerLinks.length > 0 && (
+                <nav class='flex flex-wrap justify-center gap-6 text-sm' aria-label='Footer'>
+                  {footerLinks.map((link) => (
+                    <a href={link.href} class='text-muted-foreground hover:text-foreground motion-safe:transition'>
+                      {link.label}
+                    </a>
+                  ))}
+                </nav>
+              )}
             </div>
             <Separator class='mt-6' />
             <div class='pt-6 text-center text-xs text-muted-foreground'>

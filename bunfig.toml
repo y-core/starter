@@ -1,2 +1,5 @@
+[install.security]
+scanner = "@socketsecurity/bun-security-scanner"
+
 [test]
 preload = ["./tests/setup.ts"]

@@ -1,0 +1,1 @@
+export { registerShowcase } from "./router";

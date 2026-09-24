@@ -1,23 +1,18 @@
 import { describe, expect, it } from "bun:test";
 
 import { assets } from "@assets";
-import { attrOf, attrsOf, classesOf, elementOf, fakeD1, fakeKV, innerOf, tagOf } from "@y-core/forge/testing";
+import { attrOf, attrsOf, classesOf, elementOf, fakeKV, innerOf, tagOf } from "@y-core/forge/testing";
 
 import { app } from "../../src/worker";
-import { CONFIG_ENV } from "../env";
+import { devApp } from "../../src/worker.dev";
+import { CONFIG_ENV, createTestBindings } from "../env";
 
 const MOCK_ASSETS = { fetch: async () => new Response("", { status: 200 }) } as unknown as Fetcher;
 
 /** The 404 page only renders once the asset binding has declined the path. */
 const MOCK_ASSETS_404 = { fetch: async () => new Response("Not Found", { status: 404 }) } as unknown as Fetcher;
 
-const MINIMUM_ENV = {
-  ASSETS: MOCK_ASSETS,
-  SITE_ORIGIN: "https://example.com",
-  ...CONFIG_ENV,
-  AUTH_KV: fakeKV(),
-  AUTH_DB: fakeD1(),
-} as unknown as Env;
+const MINIMUM_ENV = { ASSETS: MOCK_ASSETS, SITE_ORIGIN: "https://example.com", ...CONFIG_ENV, ...createTestBindings() } as unknown as Env;
 
 const NOINDEX = '<meta name="robots" content="noindex">';
 
@@ -45,9 +40,9 @@ describe("Layout — page meta", () => {
 
   // The mount writes the title and the `noindex`; this app never restates either.
   it("renders a mounted page's own descriptor through the shell", async () => {
-    const res = await app.request("/showcase/ui", {}, MINIMUM_ENV);
+    const res = await devApp.request("/logs", {}, { ...MINIMUM_ENV, LOGS_KV: fakeKV() } as unknown as Env);
     const text = await res.text();
-    expect(elementOf(text, "title")).toBe("<title>Catalog — Forge Studio</title>");
+    expect(elementOf(text, "title")).toBe("<title>Logs — Forge Studio</title>");
     expect(elementOf(text, "meta", 'name="robots"')).toBe(NOINDEX);
     expect(elementOf(text, "link", 'rel="canonical"')).toBe("");
   });
@@ -90,19 +85,16 @@ describe("Layout — dead mobile-nav-markup regression guards", () => {
 
   it('renders data-scope="navbar" so the eager Resumable scope resumes the bar', async () => {
     const text = await getHomeHtml();
-    expect(tagOf(text, 'data-scope="navbar"')).toBe('<div data-scope="navbar" data-island-state="{&quot;filters&quot;:[&quot;anonymous&quot;]}">');
+    expect(tagOf(text, 'data-scope="navbar"').startsWith("<div ")).toBe(true);
+    expect(Object.keys(attrsOf(text, 'data-scope="navbar"'))).toEqual(["data-scope", "data-island-state"]);
   });
 });
 
 describe("Layout — nav landmark structure", () => {
-  it("renders exactly one Primary <nav> and the total <nav> count is 2 (header bar + footer)", async () => {
+  it("renders exactly one Primary <nav>", async () => {
     const text = await getHomeHtml();
-    const navOpenTags = text.match(/<nav/g) ?? [];
-    expect(navOpenTags.length).toBe(2);
     const primaryCount = (text.match(/<nav aria-label="Primary"/g) ?? []).length;
     expect(primaryCount).toBe(1);
-    const footerCount = (text.match(/<nav[^>]*aria-label="Footer"/g) ?? []).length;
-    expect(footerCount).toBe(1);
   });
 
   it('does not render a duplicate aria-label="Mobile" landmark', async () => {
@@ -147,36 +139,34 @@ function linkAt(html: string, href: string): { slot: string; role: string; label
   return { slot: attrOf(element, "data-slot"), role: attrOf(element, "role"), label: innerOf(element) };
 }
 
-describe("Layout — nav content (Showcase menu + Contact bar link)", () => {
-  it('renders the "Showcase" trigger label distinct from the hard-coded aria-label="Menu" toggle', async () => {
-    const text = await getHomeHtml();
-    expect(attrOf(text, "aria-label", 'data-slot="navbar-toggle"')).toBe("Menu");
-    expect(elementOf(elementOf(text, "button", 'data-slot="menu-trigger"'), "span")).toBe("<span>Showcase</span>");
-    expect(text).not.toContain('aria-label="Showcase"');
+function barEntries(html: string): { slot: string; label: string }[] {
+  const nav = elementOf(html, "nav", 'aria-label="Primary"');
+  return [...nav.matchAll(/data-slot="(menu-trigger|navbar-link)"[^>]*>\s*(?:<span>)?([^<]*)/g)].map(([, slot = "", label = ""]) => ({
+    slot,
+    label,
+  }));
+}
+
+describe("Layout — nav content (the Logs bar link)", () => {
+  it('labels the mobile toggle with the hard-coded aria-label="Menu"', async () => {
+    expect(attrOf(await getHomeHtml(), "aria-label", 'data-slot="navbar-toggle"')).toBe("Menu");
   });
 
-  it("nests Logs, Theme and UI as menu items inside the Showcase popover", async () => {
-    const text = await getHomeHtml();
-
-    expect([linkAt(text, "/showcase/logs"), linkAt(text, "/showcase/ui/theme"), linkAt(text, "/showcase/ui")]).toEqual([
-      { slot: "menu-link-item", role: "menuitem", label: "Logs" },
-      { slot: "menu-link-item", role: "menuitem", label: "Theme" },
-      { slot: "menu-link-item", role: "menuitem", label: "UI" },
-    ]);
+  it("renders Logs as an unfiltered bar link on the production entry", async () => {
+    expect(linkAt(await getHomeHtml(), "/logs")).toEqual({ slot: "navbar-link", role: "", label: "Logs" });
   });
 
-  it("promotes Contact to a bar link, so it is not also a row inside the dropdown", async () => {
-    expect(linkAt(await getHomeHtml(), "/#contact")).toEqual({ slot: "navbar-link", role: "", label: "Contact" });
+  it("renders Logs as a bar entry exactly once", async () => {
+    const labels = barEntries(await getHomeHtml()).map((entry) => entry.label);
+    expect(labels.filter((label) => label === "Logs")).toEqual(["Logs"]);
   });
 
-  it("orders the bar as Showcase menu, then Contact, then the theme toggle", async () => {
+  it("renders the theme toggle after the navbar", async () => {
     const text = await getHomeHtml();
-    const showcase = text.indexOf(tagOf(text, 'data-slot="menu-trigger"'));
-    const contact = text.indexOf(tagOf(text, 'href="/#contact"'));
+    const nav = text.indexOf('<nav aria-label="Primary"');
     const theme = text.indexOf(tagOf(text, 'data-scope="theme"'));
-    expect(showcase).toBeGreaterThan(-1);
-    expect(contact).toBeGreaterThan(showcase);
-    expect(theme).toBeGreaterThan(contact);
+    expect(nav).toBeGreaterThan(-1);
+    expect(theme).toBeGreaterThan(text.indexOf("</nav>", nav));
   });
 });
 

@@ -22,9 +22,9 @@ test("reaches a page from inside the open drawer, which is the whole reason it o
   await page.goto("/");
 
   await page.locator("[data-slot='navbar-toggle']").click();
-  await page.locator("[data-slot='navbar-link'][href='/#contact']").click();
+  await page.locator("[data-slot='navbar-link'][href='/logs']").click();
 
-  await expect(page).toHaveURL(/#contact$/);
+  await expect(page).toHaveURL(/\/logs$/);
 });
 
 test("cycles the theme preference and keeps it across a reload", async ({ page }) => {

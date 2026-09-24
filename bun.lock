@@ -5,10 +5,11 @@
     "": {
       "name": "forge-starter",
       "dependencies": {
-        "@y-core/forge": "https://github.com/y-core/forge/releases/download/v0.2.5/y-core-forge-0.2.5.tgz",
+        "@y-core/forge": "https://pkg-forge.ysite.workers.dev/v0.3.3/y-core-forge-0.3.3.tgz",
       },
       "devDependencies": {
         "@playwright/test": "^1.63.0",
+        "@socketsecurity/bun-security-scanner": "^1.1.3",
         "@tailwindcss/cli": "^4.3.3",
         "esbuild": "^0.28.2",
         "oxfmt": "0.68.0",
@@ -294,6 +295,8 @@
 
     "@sindresorhus/is": ["@sindresorhus/is@7.2.0", "", {}, "sha512-P1Cz1dWaFfR4IR+U13mqqiGsLFf1KbayybWwdd2vfctdV6hDpUkgCY0nKOLLTMSoRd/jJNjtbqzf13K8DCCXQw=="],
 
+    "@socketsecurity/bun-security-scanner": ["@socketsecurity/bun-security-scanner@1.1.3", "", {}, "sha512-etUBYn5rx/ubI2JaAplX/Dr48X4uufcXVxvcVp68DZFne+ROlUQTcEw7pJFgq6UY4PWbChvhWnoNQBnFWwXyEA=="],
+
     "@speed-highlight/core": ["@speed-highlight/core@1.2.24", "", {}, "sha512-qeW2e1l78afw8VhRPfPQ1Gjj+KU5XFQ/OFV5ti6eTa9bruO7mJyZtA4vw0ofqmA3tKCkROE9xLk3VZoeRc98nw=="],
 
     "@tailwindcss/cli": ["@tailwindcss/cli@4.3.3", "", { "dependencies": { "@parcel/watcher": "2.5.1", "@tailwindcss/node": "4.3.3", "@tailwindcss/oxide": "4.3.3", "enhanced-resolve": "^5.24.1", "mri": "^1.2.0", "picocolors": "^1.1.1", "tailwindcss": "4.3.3" }, "bin": { "tailwindcss": "./dist/index.mjs" } }, "sha512-ZvS/n1ZHOBKcVlhkt8l5NNr1EDXk1NboYO5CYDOs6NUmvT9z6bzkwsosaJftY57T/3gWNzWMJzIXLodZC8ssdw=="],
@@ -366,7 +369,7 @@
 
     "@typescript/typescript-win32-x64": ["@typescript/typescript-win32-x64@7.0.2", "", { "os": "win32", "cpu": "x64" }, "sha512-0BQ3HkAHHlKLSp1qRvf3SUhGpGsDuhB/jgFw75guyqbxJqEaS0Cw/VFO8i2nHglJUzQCRtMMR/IBAKE3ETMC4g=="],
 
-    "@y-core/forge": ["@y-core/forge@https://github.com/y-core/forge/releases/download/v0.2.5/y-core-forge-0.2.5.tgz", { "dependencies": { "@remix-run/fetch-router": "^0.22.0", "@remix-run/headers": "^0.21.1", "@remix-run/route-pattern": "^0.24.0", "@remix-run/session": "^0.4.2", "htmx.org": "^2.0.10", "valibot": "^1.5.0" }, "peerDependencies": { "esbuild": ">=0.20.0", "harfbuzzjs": ">=1.6.0", "sharp": ">=0.33.0", "tailwindcss": ">=4.0.0", "wrangler": ">=4.0.0" }, "optionalPeers": ["esbuild", "harfbuzzjs", "sharp", "tailwindcss", "wrangler"], "bin": { "forge": "./src/tooling/root/bin.ts", "warden": "./warden/src/bin.ts" } }, "sha512-jVySsGBsGAx/6vLIWK/26/UsCxMnRgGdlO8IjPIdOnSOyYex27FxxN4cPfVVgZHwuq9p4SF00jqWyoEC8K3QWA=="],
+    "@y-core/forge": ["@y-core/forge@https://pkg-forge.ysite.workers.dev/v0.3.3/y-core-forge-0.3.3.tgz", { "dependencies": { "@remix-run/fetch-router": "^0.22.0", "@remix-run/headers": "^0.21.1", "@remix-run/route-pattern": "^0.24.0", "@remix-run/session": "^0.4.2", "htmx.org": "^2.0.10", "valibot": "^1.5.0" }, "peerDependencies": { "esbuild": ">=0.20.0", "harfbuzzjs": ">=1.6.0", "sharp": ">=0.33.0", "tailwindcss": ">=4.0.0", "wrangler": ">=4.0.0" }, "optionalPeers": ["esbuild", "harfbuzzjs", "sharp", "tailwindcss", "wrangler"], "bin": { "forge": "./src/tooling/root/bin.ts", "warden": "./warden/src/bin.ts" } }, "sha512-9VChMOnxUfMyoXeNtDCaq9RAIHrz7Yljr7Rwli9yW+uv2KTacz0LN0dFjKoqLICzMkEAsqd/cHlkP6gLkZ4LxA=="],
 
     "blake3-wasm": ["blake3-wasm@2.1.5", "", {}, "sha512-F1+K8EbfOZE49dtoPtmxUQrpXaBIl3ICvasLh+nJta0xkz+9kF/7uet9fLnwKqhDrmj6g+6K3Tw9yQPUg2ka5g=="],
 

@@ -17,9 +17,11 @@ SITE_ORIGIN=https://starter.devbox.test:8443
 # variable's: src/worker.dev.ts grants them, so no production environment can switch them on.
 LOG_LEVEL=DEBUG
 
+# feature:email:begin
 # EMAIL_FROM and EMAIL_TO are plain-text vars declared in wrangler.jsonc, so they need no line here.
 # Set one below only to override it for `bun run dev`; the schema refuses an empty value either way.
 
+# feature:email:end
 ################################################################################
 # SECRETS - Never place secrets in wrangler.jsonc.
 # Production: Cloudflare dashboard (Settings → Variables and Secrets, encrypted).
@@ -27,8 +29,11 @@ LOG_LEVEL=DEBUG
 # CSRF protection — generate with: openssl rand -hex 32
 CSRF_SECRET=your-64-char-hex-csrf-secret
 
+# feature:email:begin
 EMAIL_API_KEY=dev-placeholder-api-key
 
+# feature:email:end
+# feature:turnstile:begin
 # Cloudflare Turnstile — create a site at dash.cloudflare.com/turnstile.
 # "Always passes" testing keys — no Cloudflare account needed, only network to siteverify:
 TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
@@ -37,6 +42,8 @@ TURNSTILE_SITE_KEY=1x00000000000000000000AA
 # an app pinning its own hostname refuses. src/worker.dev.ts grants the allowance that skips that
 # comparison, and only under one of these three published secrets — so there is nothing to set here.
 
+# feature:turnstile:end
+# feature:auth:begin
 # Auth key ring — comma-separated hex root secrets, newest first, each >= 64 hex chars.
 # Rotation is prepending a secret. Generate with: openssl rand -hex 32
 AUTH_KEY_RING=your-64-char-hex-auth-root-secret
@@ -48,3 +55,4 @@ SESSION_SECRET=your-64-char-hex-session-secret
 # the only path by which any account acquires that role, so an unset value leaves `/admin/*` mounted
 # and unreachable. Rotate it once the first admin exists. Generate with: openssl rand -hex 32
 ADMIN_BOOTSTRAP_SECRET=your-64-char-hex-admin-bootstrap-secret
+# feature:auth:end

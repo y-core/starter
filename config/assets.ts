@@ -15,7 +15,7 @@ export default defineAssetsConfig({
           // upstream icon commit would break the build, and that break would look like tampering.
           path: "https://raw.githubusercontent.com/lucide-icons/lucide/1.47.0/icons/",
           files: [
-            { key: "phone", file: "phone.svg", sha256: "bd59dd10667cbe410a69e2fbbf4d9645d08abe862c8d89082bd4f533957859a8" },
+            { key: "phone", file: "phone.svg", sha256: "bd59dd10667cbe410a69e2fbbf4d9645d08abe862c8d89082bd4f533957859a8" }, // feature:contact
             { key: "mail", file: "mail.svg", sha256: "3236a51d5b8ce9b0528cf2e6ad07e527bd636dded6f5a9d656072052b99caea8" },
             { key: "send", file: "send.svg", sha256: "a489257f447b808ab6b258ae888fa49686885bbc30a7a2774d97a01f11f9cd5e" },
             { key: "key", file: "key.svg", sha256: "1f0bdf32374dacfca8cfc7f942c59d27a438e409dccaef11a8ce57de9365ae60" },

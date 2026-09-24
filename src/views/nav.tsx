@@ -1,66 +1,82 @@
 /** @jsxRuntime automatic */
 /** @jsxImportSource @y-core/forge/jsx */
 
-import { AUTH_NAV_FILTERS, AUTH_NAV_SIGNOUT_SLOT } from "@y-core/forge/auth/web";
-import type { NavDefinition } from "@y-core/forge/ui/chrome";
+import type { AppContext as ForgeAppContext } from "@y-core/forge/context";
+import type { NavDefinition, NavLink, NavSectionItem } from "@y-core/forge/ui/chrome";
 
-import { authWebPaths } from "../app/auth";
+import type { AppEnv, NavState } from "../app/types";
 import { routes } from "../routes";
 
-/** Every route-map key `primaryNav` names, resolved to the URL it renders as. */
-const NAV_HREFS: Record<string, string> = {
-  // The bar is in the shared layout, so a bare `#contact` would point at nothing on a page that has
-  // no contact section; `resolveHref` need not return a route.
-  contact: `${routes.home.href()}#contact`,
-  showcaseUi: routes.showcase.ui.index.href(),
-  showcaseTheme: routes.showcase.ui.theme.href(),
-  showcaseLogs: routes.showcase.logs.href(),
-  showcaseInteractive: routes.showcase.ui.interactive.href(),
-  showcaseRuntime: routes.showcase.ui.runtime.href(),
-  showcaseHtmx: routes.showcase.ui.htmx.href(),
-  showcaseChrome: routes.showcase.ui.chrome.href(),
-  authSignin: authWebPaths.auth.signin(),
-  authSignup: authWebPaths.auth.signup(),
-  account: routes.account.href(),
-  adminUsers: authWebPaths.admin.users.list(),
-};
+/** Resolves what one contributor's entries show this request's viewer. @public */
+export type NavStateResolver = (c: ForgeAppContext<AppEnv>) => Promise<NavState>;
 
-/** The primary navbar configuration: one menu of destinations behind a single trigger. */
-export const primaryNav: NavDefinition = {
-  sections: [
-    {
-      items: [
-        {
-          // Never name this "Menu": forge hard-codes `aria-label='Menu'` on the mobile toggle whose
-          // panel this trigger renders inside, and two nested controls must not share one name.
-          label: "Showcase",
-          items: [
-            { label: "Logs", href: "showcaseLogs" },
-            { label: "Theme", href: "showcaseTheme" },
-            { label: "UI", href: "showcaseUi" },
-          ],
-        },
-        {
-          // Naming a second factor here would advertise one `AUTH_SECOND_FACTORS` may have switched
-          // off, so the entries name only the pages every deployment serves.
-          label: "Account",
-          items: [
-            { label: "Sign in", href: "authSignin", filters: [AUTH_NAV_FILTERS.anonymous] },
-            { label: "Sign up", href: "authSignup", filters: [AUTH_NAV_FILTERS.anonymous] },
-            { label: "Your account", href: "account", filters: [AUTH_NAV_FILTERS.signedIn] },
-            // The admin token rather than the signed-in one: the users list is behind `requireAdmin`,
-            // so offering it to an ordinary member links to a 403.
-            { label: "Users", href: "adminUsers", filters: [AUTH_NAV_FILTERS.admin] },
-            { slot: AUTH_NAV_SIGNOUT_SLOT, filters: [AUTH_NAV_FILTERS.signedIn] },
-          ],
-        },
-        { label: "Contact", href: "contact" },
-      ],
+/** A contributor's bar entries and the route-map keys they name, resolved to the URLs they render as. @public */
+export interface NavContribution {
+  items: readonly NavSectionItem[];
+  hrefs: Readonly<Record<string, string>>;
+  /** The placement key of the skeleton bar entry these items render ahead of; absent, they follow the skeleton. */
+  before?: string | undefined;
+  footer?: readonly Pick<NavLink, "label" | "href">[] | undefined;
+  state?: NavStateResolver | undefined;
+}
+
+/** One app's primary navbar, composed from the skeleton's entries and every contribution made at registration. @public */
+export interface PrimaryNav {
+  contribute: (contribution: NavContribution) => void;
+  definition: () => NavDefinition;
+  footer: () => readonly Pick<NavLink, "label" | "href">[];
+  resolveHref: (key: string) => string;
+  states: () => readonly NavStateResolver[];
+}
+
+interface SkeletonBarEntry {
+  placement: string;
+  item: NavSectionItem;
+}
+
+const SKELETON_BAR: readonly SkeletonBarEntry[] = [{ placement: "logs", item: { label: "Logs", href: "logs" } }];
+
+const SKELETON_HREFS: Readonly<Record<string, string>> = { logs: routes.logs.href() };
+
+// Never label a nav entry "Menu", at any depth: forge hard-codes `aria-label='Menu'` on the mobile
+// toggle whose panel these entries render inside, and two nested controls must not share one name.
+function refuseMenuLabel(items: readonly NavSectionItem[]): void {
+  for (const item of items) {
+    if ("label" in item && item.label?.trim().toLowerCase() === "menu") {
+      throw new Error(`nav: a nav entry may not be labelled "${item.label}".`);
+    }
+    if ("items" in item) refuseMenuLabel(item.items);
+  }
+}
+
+/** Creates one app's primary navbar; contributed entries follow the skeleton's in arrival order unless `before` places them. @public */
+export function createPrimaryNav(): PrimaryNav {
+  refuseMenuLabel(SKELETON_BAR.map((entry) => entry.item));
+  const following: NavSectionItem[] = [];
+  const placed = new Map<string, NavSectionItem[]>();
+  const footer: Pick<NavLink, "label" | "href">[] = [];
+  const states: NavStateResolver[] = [];
+  const hrefs = new Map(Object.entries(SKELETON_HREFS));
+  const resolveHref = (key: string): string => hrefs.get(key) ?? routes.home.href();
+  return {
+    contribute: ({ items, hrefs: added, before, footer: links = [], state }) => {
+      refuseMenuLabel(items);
+      if (before !== undefined && !SKELETON_BAR.some((entry) => entry.placement === before)) {
+        throw new Error(`nav: no skeleton bar entry has the placement key "${before}".`);
+      }
+      const taken = Object.keys(added).find((key) => hrefs.has(key));
+      if (taken !== undefined) throw new Error(`nav: the route-map key "${taken}" is already contributed.`);
+      for (const [key, href] of Object.entries(added)) hrefs.set(key, href);
+      if (before === undefined) following.push(...items);
+      else placed.set(before, [...(placed.get(before) ?? []), ...items]);
+      footer.push(...links);
+      if (state !== undefined) states.push(state);
     },
-  ],
-};
-
-/** Resolves a `primaryNav` route-map key to a URL; falls back to the home route on an unknown key. */
-export function resolveNavHref(key: string): string {
-  return NAV_HREFS[key] ?? routes.home.href();
+    definition: () => ({
+      sections: [{ items: [...SKELETON_BAR.flatMap(({ placement, item }) => [...(placed.get(placement) ?? []), item]), ...following] }],
+    }),
+    footer: () => footer.map((link) => ({ label: link.label, href: resolveHref(link.href) })),
+    resolveHref,
+    states: () => [...states],
+  };
 }

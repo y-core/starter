@@ -1,92 +1,27 @@
 import { describe, expect, it } from "bun:test";
 
-import { attrOf, attrsOf, elementOf, fakeD1, fakeKV, mockExecutionContext, tagOf } from "@y-core/forge/testing";
+import { attrOf, elementOf, mockExecutionContext, tagOf } from "@y-core/forge/testing";
 
 import { routes } from "../../src/routes";
 import worker, { app } from "../../src/worker";
-import { CONFIG_ENV } from "../env";
-import { sqliteD1 } from "../sqlite-d1";
+import { CONFIG_ENV, createTestBindings } from "../env";
 
 const MOCK_ASSETS = { fetch: async () => new Response("", { status: 200 }) } as unknown as Fetcher;
 const MOCK_ASSETS_404 = { fetch: async () => new Response("Not Found", { status: 404 }) } as unknown as Fetcher;
 
-const MINIMUM_ENV = {
-  ASSETS: MOCK_ASSETS,
-  SITE_ORIGIN: "https://example.com",
-  ...CONFIG_ENV,
-  AUTH_KV: fakeKV(),
-  AUTH_DB: fakeD1(),
-} as unknown as Env;
+const MINIMUM_ENV = { ASSETS: MOCK_ASSETS, SITE_ORIGIN: "https://example.com", ...CONFIG_ENV, ...createTestBindings() } as unknown as Env;
 
 const NOT_FOUND_HEADING =
   '<h1 data-slot="empty-state-title" class="font-semibold font-serif text-4xl text-balance text-foreground">Page not found</h1>';
 
 describe("the worker module", () => {
-  it("exports both entry points", () => {
+  it("exports the fetch entry point", () => {
     expect(typeof worker.fetch).toBe("function");
-    expect(typeof worker.scheduled).toBe("function");
   });
-
-  // `AUTH_DB` and `AUTH_KV` are declared without `optional`, unlike the two KV bindings beside them:
-  // auth degraded into a no-op guard is worse than auth refusing (`BOUNDARIES.md` §5).
-  for (const binding of ["AUTH_DB", "AUTH_KV"] as const) {
-    it(`refuses to serve rather than degrading when the ${binding} binding is absent`, async () => {
-      const { [binding]: _absent, ...env } = MINIMUM_ENV as unknown as Record<string, unknown>;
-
-      const res = await app.request("/", {}, env as unknown as Env);
-
-      expect(res.status).toBe(500);
-    });
-  }
 
   it("serves a request through the named app", async () => {
     const res = await worker.fetch(new Request("https://example.com/"), MINIMUM_ENV, mockExecutionContext());
     expect(res.status).toBe(200);
-  });
-
-  // Real SQLite over this repository's own migration, so the database decides what survives rather
-  // than a statement copied out of the library.
-  it("reclaims the expired challenge and nonce rows on a scheduled run, and leaves the live ones", async () => {
-    const db = sqliteD1();
-    const past = Date.now() - 60_000;
-    const future = Date.now() + 60_000;
-    await db.exec(`INSERT INTO auth_challenges (key, value, expires_at) VALUES ('stale', 'x', ${past}), ('live', 'x', ${future})`);
-    await db.exec(`INSERT INTO auth_nonces (key, expires_at) VALUES ('stale', ${past}), ('live', ${future})`);
-
-    await worker.scheduled({} as ScheduledController, { ...MINIMUM_ENV, AUTH_DB: db } as unknown as Env, mockExecutionContext());
-
-    expect(db.rows<{ key: string }>("SELECT key FROM auth_challenges").map((row) => row.key)).toEqual(["live"]);
-    expect(db.rows<{ key: string }>("SELECT key FROM auth_nonces").map((row) => row.key)).toEqual(["live"]);
-    db.close();
-  });
-
-  it("leaves a database with nothing expired untouched, so the case above is a purge and not a wipe", async () => {
-    const db = sqliteD1();
-    const future = Date.now() + 60_000;
-    await db.exec(`INSERT INTO auth_challenges (key, value, expires_at) VALUES ('live', 'x', ${future})`);
-    await db.exec(`INSERT INTO auth_nonces (key, expires_at) VALUES ('live', ${future})`);
-
-    await worker.scheduled({} as ScheduledController, { ...MINIMUM_ENV, AUTH_DB: db } as unknown as Env, mockExecutionContext());
-
-    expect(db.rows("SELECT key FROM auth_challenges").length).toBe(1);
-    expect(db.rows("SELECT key FROM auth_nonces").length).toBe(1);
-    db.close();
-  });
-});
-
-// The health route reports the database this app cannot work without: a schema whose fingerprint has
-// drifted from what the migrations recorded is a deploy that half-landed, and it must not read as up.
-describe("GET /api/health against a drifted schema", () => {
-  function driftedEnv(): Env {
-    const db = fakeD1((sql) => (sql.includes("_forge_migrations") ? [{ fingerprint: "not-the-fingerprint-of-this-schema" }] : []));
-    return { ...MINIMUM_ENV, AUTH_DB: db } as unknown as Env;
-  }
-
-  it("answers 503 and names the schema check as the one that failed", async () => {
-    const res = await app.request("/api/health", {}, driftedEnv());
-
-    expect(res.status).toBe(503);
-    expect(await res.json()).toEqual({ ok: false, checks: { csrf: true, schema: false } });
   });
 });
 
@@ -128,14 +63,6 @@ describe("GET /", () => {
     const hero = elementOf(await res.text(), "section", 'id="home"');
     expect(tagOf(hero)).toBe('<section id="home" class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-16 lg:grid-cols-2 lg:px-10 lg:py-24">');
     expect(elementOf(hero, "p")).toBe('<p class="text-sm font-semibold tracking-eyebrow text-primary uppercase">Digital Product Studio</p>');
-  });
-
-  it("includes the contact form with hx-post and result target", async () => {
-    const res = await app.request("/", {}, MINIMUM_ENV);
-    const text = await res.text();
-    expect(attrOf(text, "hx-post", 'data-ref="contact-form"')).toBe("/api/contact");
-    expect(attrOf(text, "hx-target", 'data-ref="contact-form"')).toBe("#contact-result");
-    expect(attrsOf(text, 'id="contact-result"')).toEqual({ "data-ref": "contact-result", id: "contact-result", "aria-live": "polite" });
   });
 });
 

@@ -1,0 +1,28 @@
+{
+  "version": 6,
+  "desired": {
+    "node_modules/@y-core/forge/src/auth/schema.sql": "871cc7d46e2a8aa647cca3df4d55ec3beba38b5d7cef67b2ee95d0ac3be75f63"
+  },
+  "declared": {
+    "node_modules/@y-core/forge/src/auth/schema.sql": [
+      "auth_challenges",
+      "auth_challenges_expires_at",
+      "auth_credentials",
+      "auth_credentials_credential_id",
+      "auth_credentials_user_id",
+      "auth_factors",
+      "auth_factors_user_kind",
+      "auth_identity_links",
+      "auth_identity_links_provider_subject",
+      "auth_identity_links_user_id",
+      "auth_nonces",
+      "auth_nonces_expires_at",
+      "auth_otp_state",
+      "auth_users",
+      "auth_users_email_key",
+      "auth_users_is_admin",
+      "auth_users_webauthn_id"
+    ]
+  },
+  "migrationsDigest": "70dd3a9be75b48f42e5f9563ad7c48f7bfd416b21fde5eb43ae88be5a49ababb"
+}

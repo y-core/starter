@@ -1,0 +1,1 @@
+export { registerContact } from "./router";

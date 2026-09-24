@@ -116,6 +116,12 @@
         "jsx-a11y/tabindex-no-positive": "off"
       }
     },
+    // feature:showcase:begin
+    {
+      "files": ["src/showcase/**"],
+      "rules": { "forge/catalog-wrong-raw-input": "error" }
+    },
+    // feature:showcase:end
     {
       // The trees that are *supposed* to import a build-time subpath: each sits outside
       // `tsconfig.json`'s `include` precisely so it may. The valibot ban still applies here.

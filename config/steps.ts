@@ -1,9 +1,10 @@
 /** The gate's step table, loaded by `forge verify` through the default export. */
 
+import { existsSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { cloudflareWorkerSteps, commentBudgetStep, type Step } from "@y-core/forge/tooling/gate";
+import { cloudflareWorkerSteps, type CloudflareWorkerStepOptions, commentBudgetStep, type Step } from "@y-core/forge/tooling/gate";
 import { CONTRAST_PAIRS, CRITERION } from "@y-core/forge/ui/contracts/theme";
 import { CANON_ROOT } from "@y-core/forge/warden";
 import { wardenAppSteps } from "@y-core/forge/warden/steps";
@@ -31,6 +32,17 @@ const FORGE_CSS = relative(ROOT, fileURLToPath(import.meta.resolve("@y-core/forg
 /** Forge's own token layer, in import order. */
 const FORGE_THEME_FILES = [`${FORGE_CSS}/theme-neutral.css`, `${FORGE_CSS}/theme-colors.css`, `${FORGE_CSS}/theme-base.css`];
 
+const CLIENT_DIRS: string[] = ["src/client"];
+CLIENT_DIRS.push("src/showcase/client"); /* feature:showcase */
+const CROSSINGS = ["src/worker.ts", "src/app/config.ts"];
+CROSSINGS.push("src/client/main.ts"); /* feature:showcase */
+const OPT_INS: Pick<CloudflareWorkerStepOptions, "importBoundary" | "features" | "db"> = {};
+if (existsSync(resolve(ROOT, "config/features.ts"))) {
+  OPT_INS.features = {};
+  OPT_INS.importBoundary = { guarded: [], sources: ["src"], crossings: CROSSINGS };
+}
+OPT_INS.db = true; /* feature:db */
+
 export const STEPS: readonly Step[] = [
   ...cloudflareWorkerSteps({
     // Pinned rather than left at `process.cwd()`, so every row addresses this repository whatever
@@ -50,9 +62,10 @@ export const STEPS: readonly Step[] = [
     // `"unroutable"` demands the values that keep this Worker off the public internet, not merely
     // that they are stated. A fork opening a public route relaxes this in the same commit.
     exposure: { require: "unroutable" },
-    // `main.ts` is the esbuild entry and so the only basename the Worker's tree may name inside
-    // `src/client/`; everything else there is bundled for the browser and has no server build.
-    ssrBoundary: { clientDirs: ["src/client"], sources: ["src"], entryPoints: ["main.ts"] },
+    // `main.ts` is the esbuild entry and so the only basename the Worker's tree may name inside a
+    // client directory; everything else there is bundled for the browser and has no server build.
+    ssrBoundary: { clientDirs: CLIENT_DIRS, sources: ["src"], entryPoints: ["main.ts"] },
+    ...OPT_INS,
     // `custom.css` re-declares the ramps every forge semantic token resolves through, so the pairs
     // and floors are forge's but the colours audited against them are only ever this app's.
     contrast: {
@@ -68,7 +81,6 @@ export const STEPS: readonly Step[] = [
       accepted: ACCEPTED,
     },
     warden: true,
-    db: true,
     browser: true,
     workerd: true,
     // `design.sources` stays defaulted to `["src/"]`: the top-level `sources` above names `tests/`,

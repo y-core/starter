@@ -44,11 +44,33 @@ documents:
 SITE_ORIGIN=https://localhost:8787
 ```
 
+## Start your own app
+
+While `config/features.ts` exists, this tree is the demonstrator: the starter plus the optional
+features that manifest lists. To start a project from it, clone it, install, and curate a copy
+holding only the features you want:
+
+```sh
+git clone https://github.com/y-core/starter.git starter && cd starter
+bun install
+bunx forge curate --list                    # the features, and what each requires
+bunx forge curate ../my-app --keep contact  # contact and what it requires; every other feature dropped
+cd ../my-app && bun i && bun run build:assets && bun run verify
+```
+
+`--drop` is the other way to choose: `bunx forge curate ../my-app --drop showcase` drops showcase and
+everything that requires it, and keeps every other feature.
+
+`--keep` and `--drop` each take a comma-separated list, and cannot be combined; `--keep ""` keeps no
+feature at all. The target must be a new or empty directory. The copy holds what git sees — tracked
+and untracked files, minus anything `.gitignore` excludes — so it arrives without `node_modules`,
+and a copy that keeps no feature arrives without `config/features.ts` too.
+
 ## Verifying
 
 ```sh
 bun run verify          # the gate — every step must pass
-bun run verify --full   # the release gate — adds the schema, workerd and browser rows
+bun run verify --full   # the release gate — adds the workerd, browser and (with db) schema rows
 bun run verify --list   # print the steps of the selected mode, run none
 bun run fix             # auto-fix what the gate can fix, then re-run it
 bun run test            # the unit and seam suites, which need nothing started
@@ -91,9 +113,11 @@ CSRF secret:
 openssl rand -hex 32
 ```
 
+<!-- feature:turnstile:begin -->
 The Turnstile `1x…` values in the template are Cloudflare's official test keys: the site key always
 renders the widget and the secret key always passes verification. They are safe to commit and must
 never reach production.
+<!-- feature:turnstile:end -->
 
 ## Gotchas
 

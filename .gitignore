@@ -42,10 +42,12 @@ tmp/
 .claude/routines
 .claude/scheduled_tasks.json
 .claude/settings.json
-# Local skills stay untracked, but warden's synced one is tracked exactly as `.claude/agents/` is:
+# Local skills stay untracked, but warden's synced ones are tracked exactly as `.claude/agents/` is:
 # the drift step fails on a missing file, so an ignored sync target is a red gate on a fresh clone.
 # `/*` rather than the bare directory, because git does not reconsider a negation inside an
 # excluded directory.
 .claude/skills/*
 !.claude/skills/warden-review/
+!.claude/skills/handoff/
+!.claude/skills/review-handoff/
 .claude/workflows
